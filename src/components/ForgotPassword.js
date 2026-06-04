@@ -9,6 +9,7 @@ import {
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
+import AccessFormBrand from "./AccessFormBrand";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -61,17 +62,10 @@ export default function ForgotPassword() {
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-white to-blue-50 items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
-        {/* Header */}
-        <div className="text-center">
-          <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <Mail className="w-8 h-8 text-white" />
-          </div>
-          <h2 className="text-3xl font-bold text-gray-900">Forgot Password?</h2>
-          <p className="mt-2 text-gray-600">
-            Enter your email address and we&apos;ll send you a link to reset
-            your password.
-          </p>
-        </div>
+        <AccessFormBrand
+          title="Forgot Password?"
+          subtitle="Enter your email and we'll send you a link to reset your password."
+        />
 
         {/* Form */}
         <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200 p-8">

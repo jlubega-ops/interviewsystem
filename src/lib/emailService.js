@@ -1,8 +1,9 @@
 import nodemailer from "nodemailer";
+import { appAbsoluteUrl } from "./appUrl";
 
 // Create transporter with Google SMTP
 const createTransporter = () => {
-  return nodemailer.createTransporter({
+  return nodemailer.createTransport({
     service: "gmail",
     auth: {
       user: process.env.SMTP_USER,
@@ -161,7 +162,9 @@ export const sendActivationEmail = async (email, userName, activationToken) => {
 
 // Send password reset email
 export const sendPasswordResetEmail = async (email, userName, resetToken) => {
-  const resetLink = `${process.env.NEXT_PUBLIC_BASE_URL}/reset-password?token=${resetToken}`;
+  const resetLink = appAbsoluteUrl(
+    `/reset-password?token=${encodeURIComponent(resetToken)}`
+  );
   const template = emailTemplates.passwordReset(userName, resetLink);
 
   return await sendEmail(email, template.subject, template.html);

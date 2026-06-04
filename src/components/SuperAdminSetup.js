@@ -10,6 +10,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { useMessages, SuccessMessages, ErrorMessages } from "./MessageSystem";
+import AccessFormBrand from "./AccessFormBrand";
 
 export default function SuperAdminSetup() {
   const [formData, setFormData] = useState({
@@ -109,19 +110,10 @@ export default function SuperAdminSetup() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50 flex items-center justify-center">
       <div className="max-w-md w-full mx-4">
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200 p-8">
-          {/* Header */}
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <User className="w-8 h-8 text-white" />
-            </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Create Super Admin
-            </h1>
-            <p className="text-gray-600">
-              Create the first administrator account to get started with the
-              system.
-            </p>
-          </div>
+          <AccessFormBrand
+            title="Create Super Admin"
+            subtitle="Create the first administrator account to get started with the system."
+          />
 
           {/* Error Message */}
           {error && (

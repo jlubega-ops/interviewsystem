@@ -10,6 +10,8 @@ import {
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
+import AccessFormBrand from "./AccessFormBrand";
 
 export default function ResetPassword() {
   const [password, setPassword] = useState("");
@@ -107,9 +109,17 @@ export default function ResetPassword() {
 
   if (isVerifying) {
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-white to-blue-50 items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+      <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-white to-blue-50 items-center justify-center px-4">
+        <div className="max-w-md w-full text-center">
+          <Image
+            src="/images/logo.png"
+            alt="MUBS EIIC Logo"
+            width={80}
+            height={80}
+            className="rounded-xl mx-auto mb-6 object-contain"
+            priority
+          />
+          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-gray-600">Verifying reset token...</p>
         </div>
       </div>
@@ -119,18 +129,14 @@ export default function ResetPassword() {
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-white to-blue-50 items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
-        {/* Header */}
-        <div className="text-center">
-          <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <Lock className="w-8 h-8 text-white" />
-          </div>
-          <h2 className="text-3xl font-bold text-gray-900">Reset Password</h2>
-          {user && (
-            <p className="mt-2 text-gray-600">
-              Set a new password for {user.email}
-            </p>
-          )}
-        </div>
+        <AccessFormBrand
+          title="Reset Password"
+          subtitle={
+            user
+              ? `Set a new password for ${user.email}`
+              : "Choose a new password for your account"
+          }
+        />
 
         {/* Form */}
         <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200 p-8">

@@ -48,6 +48,7 @@ export async function middleware(request) {
   // Define public API routes (no authentication required)
   const publicApiRoutes = [
     "/api/server-time",
+    "/api/system/status",
     "/api/auth/login",
     "/api/auth/logout",
     "/api/auth/activate-account",

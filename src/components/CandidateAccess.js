@@ -6,12 +6,11 @@ import Link from "next/link";
 import Image from "next/image";
 import {
   ArrowLeft,
-  Key,
   Loader2,
-  AlertCircle,
   CheckCircle,
 } from "lucide-react";
 import { useMessages, MessageDisplay } from "./MessageSystem";
+import AccessFormBrand from "./AccessFormBrand";
 
 export default function CandidateAccess() {
   const [accessKey, setAccessKey] = useState("");
@@ -160,18 +159,10 @@ export default function CandidateAccess() {
           </div>
         )}
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200 p-8">
-          {/* Header */}
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Key className="w-8 h-8 text-white" />
-            </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">
-              Enter Access Key
-            </h1>
-            <p className="text-gray-600 text-sm">
-              Enter your access key to start the interview
-            </p>
-          </div>
+          <AccessFormBrand
+            title="Enter Access Key"
+            subtitle="Enter your access key to start the interview"
+          />
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
