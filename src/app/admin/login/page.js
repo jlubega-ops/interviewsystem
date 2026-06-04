@@ -11,17 +11,38 @@ import BuildingBackgroundPage from "../../../components/BuildingBackgroundPage";
 
 export default function AdminLogin() {
   const searchParams = useSearchParams();
-  const [expiredMessage, setExpiredMessage] = useState("");
+  const [bannerMessage, setBannerMessage] = useState("");
+  const [bannerTone, setBannerTone] = useState("amber");
 
   useEffect(() => {
     const expired = searchParams.get("expired");
     const error = searchParams.get("error");
     const idle = searchParams.get("idle");
+    const activated = searchParams.get("activated");
+    const passwordReset = searchParams.get("passwordReset");
 
+    if (activated === "success") {
+      setBannerTone("green");
+      setBannerMessage(
+        "Your account has been activated. Please sign in with your new password."
+      );
+      return;
+    }
+    if (passwordReset === "success") {
+      setBannerTone("green");
+      setBannerMessage(
+        "Your password has been reset. Please sign in with your new password."
+      );
+      return;
+    }
+
+    setBannerTone("amber");
     if (idle === "1" || (error && decodeURIComponent(error || "").toLowerCase().includes("inactivity"))) {
-      setExpiredMessage("You were logged out after 10 minutes of inactivity. Please log in again.");
+      setBannerMessage("You were logged out after 10 minutes of inactivity. Please log in again.");
     } else if (expired === "true" || error === "Session expired" || error === "Invalid session") {
-      setExpiredMessage("Your session has expired. Please log in again.");
+      setBannerMessage("Your session has expired. Please log in again.");
+    } else {
+      setBannerMessage("");
     }
   }, [searchParams]);
 
@@ -61,14 +82,21 @@ export default function AdminLogin() {
               subtitle="Login as admin or examiner to manage the system"
             />
 
-            {expiredMessage && (
-              <div className="mb-6 p-4 bg-amber-50/95 border border-amber-200 rounded-xl">
-                <div className="flex items-center space-x-2">
-                  <div className="w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center shrink-0">
-                    <span className="text-white text-xs font-bold">!</span>
-                  </div>
-                  <p className="text-amber-800 font-medium text-sm">{expiredMessage}</p>
-                </div>
+            {bannerMessage && (
+              <div
+                className={`mb-6 p-4 rounded-xl border ${
+                  bannerTone === "green"
+                    ? "bg-green-50/95 border-green-200"
+                    : "bg-amber-50/95 border-amber-200"
+                }`}
+              >
+                <p
+                  className={`font-medium text-sm ${
+                    bannerTone === "green" ? "text-green-800" : "text-amber-800"
+                  }`}
+                >
+                  {bannerMessage}
+                </p>
               </div>
             )}
 

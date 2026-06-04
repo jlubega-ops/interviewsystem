@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, useEffect, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Lock,
@@ -24,6 +24,30 @@ export default function ResetPassword() {
   const [token, setToken] = useState(null);
 
   const searchParams = useSearchParams();
+  const router = useRouter();
+
+  const verifyToken = useCallback(async (tokenValue) => {
+    try {
+      const response = await fetch(
+        `/api/auth/reset-password?token=${encodeURIComponent(tokenValue)}`
+      );
+      const result = await response.json();
+
+      if (response.ok) {
+        setUser(result.user);
+        setError(null);
+      } else {
+        setUser(null);
+        setError(result.error || "Invalid or expired reset token");
+      }
+    } catch (err) {
+      console.error("Error verifying token:", err);
+      setUser(null);
+      setError("Failed to verify reset token");
+    } finally {
+      setIsVerifying(false);
+    }
+  }, []);
 
   useEffect(() => {
     const tokenParam = searchParams.get("token");
@@ -31,29 +55,19 @@ export default function ResetPassword() {
       setToken(tokenParam);
       verifyToken(tokenParam);
     } else {
+      setUser(null);
       setError("Reset token is required");
       setIsVerifying(false);
     }
-  }, [searchParams]);
+  }, [searchParams, verifyToken]);
 
-  const verifyToken = async (token) => {
-    try {
-      const response = await fetch(`/api/auth/reset-password?token=${token}`);
-      const result = await response.json();
-
-      if (response.ok) {
-        setUser(result.user);
-        setIsVerifying(false);
-      } else {
-        setError(result.error || "Invalid or expired reset token");
-        setIsVerifying(false);
-      }
-    } catch (error) {
-      console.error("Error verifying token:", error);
-      setError("Failed to verify reset token");
-      setIsVerifying(false);
-    }
-  };
+  useEffect(() => {
+    if (!success) return;
+    const timer = setTimeout(() => {
+      router.push("/admin/login?passwordReset=success");
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [success, router]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -93,7 +107,9 @@ export default function ResetPassword() {
       const result = await response.json();
 
       if (response.ok) {
-        setSuccess(result.message);
+        setSuccess(
+          result.message || "Password reset successfully. Redirecting to login..."
+        );
         setPassword("");
         setConfirmPassword("");
       } else {
@@ -126,134 +142,130 @@ export default function ResetPassword() {
     );
   }
 
+  const tokenValid = !!user;
+  const showPasswordForm = tokenValid && !success;
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-white to-blue-50 items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <AccessFormBrand
           title="Reset Password"
           subtitle={
-            user
-              ? `Set a new password for ${user.email}`
-              : "Choose a new password for your account"
+            success
+              ? "You will be redirected to the login page shortly."
+              : tokenValid
+                ? `Set a new password for ${user.email}`
+                : "This reset link is invalid or has expired."
           }
         />
 
-        {/* Form */}
         <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200 p-8">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Error Message */}
-            {error && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center space-x-2 text-red-800">
-                <AlertTriangle className="w-5 h-5" />
-                <span>{error}</span>
+          {error && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start space-x-2 text-red-800 mb-6">
+              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+              <span className="flex-1">{error}</span>
+              {showPasswordForm && (
                 <button
+                  type="button"
                   onClick={() => setError(null)}
-                  className="ml-auto text-red-600 hover:text-red-800"
+                  className="text-red-600 hover:text-red-800 shrink-0"
                 >
                   <XCircle className="w-4 h-4" />
                 </button>
-              </div>
-            )}
-
-            {/* Success Message */}
-            {success && (
-              <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center space-x-2 text-green-800">
-                <CheckCircle className="w-5 h-5" />
-                <span>{success}</span>
-                <button
-                  onClick={() => setSuccess(null)}
-                  className="ml-auto text-green-600 hover:text-green-800"
-                >
-                  <XCircle className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-
-            {/* Password Input */}
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-gray-700 mb-2"
-              >
-                New Password
-              </label>
-              <input
-                type="password"
-                id="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-gray-900 bg-white placeholder-gray-500"
-                placeholder="Enter new password"
-                required
-                disabled={isLoading}
-                minLength={8}
-              />
-            </div>
-
-            {/* Confirm Password Input */}
-            <div>
-              <label
-                htmlFor="confirmPassword"
-                className="block text-sm font-medium text-gray-700 mb-2"
-              >
-                Confirm New Password
-              </label>
-              <input
-                type="password"
-                id="confirmPassword"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-gray-900 bg-white placeholder-gray-500"
-                placeholder="Confirm new password"
-                required
-                disabled={isLoading}
-                minLength={8}
-              />
-            </div>
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full flex justify-center items-center space-x-2 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Resetting...</span>
-                </>
-              ) : (
-                <>
-                  <Lock className="w-4 h-4" />
-                  <span>Reset Password</span>
-                </>
               )}
-            </button>
-          </form>
+            </div>
+          )}
 
-          {/* Back to Login */}
-          <div className="mt-6 text-center">
+          {success && (
+            <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center space-x-2 text-green-800 mb-6">
+              <CheckCircle className="w-5 h-5 shrink-0" />
+              <span>{success}</span>
+            </div>
+          )}
+
+          {showPasswordForm ? (
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-medium text-gray-700 mb-2"
+                >
+                  New Password
+                </label>
+                <input
+                  type="password"
+                  id="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-gray-900 bg-white placeholder-gray-500"
+                  placeholder="Enter new password"
+                  required
+                  disabled={isLoading}
+                  minLength={8}
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="confirmPassword"
+                  className="block text-sm font-medium text-gray-700 mb-2"
+                >
+                  Confirm New Password
+                </label>
+                <input
+                  type="password"
+                  id="confirmPassword"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-gray-900 bg-white placeholder-gray-500"
+                  placeholder="Confirm new password"
+                  required
+                  disabled={isLoading}
+                  minLength={8}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full flex justify-center items-center space-x-2 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Resetting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-4 h-4" />
+                    <span>Reset Password</span>
+                  </>
+                )}
+              </button>
+            </form>
+          ) : !success ? (
+            <p className="text-sm text-gray-600 text-center mb-4">
+              Request a new reset link or return to login.
+            </p>
+          ) : null}
+
+          <div className="mt-6 text-center space-y-3">
+            {!tokenValid && !success && (
+              <Link
+                href="/forgot-password"
+                className="block text-sm text-blue-600 hover:text-blue-700 font-medium"
+              >
+                Request a new reset link
+              </Link>
+            )}
             <Link
               href="/admin/login"
               className="flex items-center justify-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Back to Login</span>
+              <span>{success ? "Go to Login now" : "Back to Login"}</span>
             </Link>
           </div>
-        </div>
-
-        {/* Help Text */}
-        <div className="text-center">
-          <p className="text-sm text-gray-500">
-            Remember your password?{" "}
-            <Link
-              href="/admin/login"
-              className="text-blue-600 hover:text-blue-700 font-medium"
-            >
-              Sign in here
-            </Link>
-          </p>
         </div>
       </div>
     </div>
