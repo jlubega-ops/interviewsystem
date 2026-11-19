@@ -16,9 +16,20 @@ const prisma = new PrismaClient();
 
 async function createSuperAdmin() {
   try {
-    const email = 'eiicinterviews@mubs.ac.ug';
-    const password = '123456789';
-    const fullName = 'Super Administrator';
+    const email = process.env.SUPERADMIN_EMAIL;
+    const password = process.env.SUPERADMIN_PASSWORD;
+    const fullName = process.env.SUPERADMIN_FULL_NAME || 'Super Administrator';
+
+    if (!email || !password) {
+      console.error('❌ Error: SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD must be set.');
+      console.error('   Example: SUPERADMIN_EMAIL=admin@example.com SUPERADMIN_PASSWORD=your-secure-password npm run create-superadmin');
+      process.exit(1);
+    }
+    if (password.length < 8) {
+      console.error('❌ Error: SUPERADMIN_PASSWORD must be at least 8 characters.');
+      process.exit(1);
+    }
+
     const username = email.split('@')[0];
 
     console.log('🔐 Creating superadmin user...');

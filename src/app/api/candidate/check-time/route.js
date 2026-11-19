@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server";
-import { prisma } from "../../../../lib/prisma";
-import {
-  calculateTimeRemaining,
-  logTimeValidation,
-} from "../../../../lib/timeValidation";
+import { calculateTimeRemaining } from "../../../../lib/timeValidation";
+import { requireOwnedAttempt } from "../../../../lib/candidateAuth";
+import { getInterviewWithQuestions } from "../../../../lib/cachedReads";
 
 export const runtime = "nodejs";
 
 // POST /api/candidate/check-time - Check if attempt time has expired
 export async function POST(request) {
   try {
-    const { attemptId } = await request.json();
+    const { attemptId, accessKey, candidateId } = await request.json();
 
     if (!attemptId) {
       return NextResponse.json(
@@ -19,40 +17,28 @@ export async function POST(request) {
       );
     }
 
-    // Get the attempt
-    const attempt = await prisma.candidateSession.findUnique({
-      where: { id: attemptId },
-      include: {
-        interview: {
-          select: {
-            durationMinutes: true,
-          },
-        },
-      },
+    const owned = await requireOwnedAttempt({
+      attemptId,
+      accessKey,
+      candidateId,
+      requireInProgress: true,
     });
+    if (owned.error) return owned.error;
+    const attempt = owned.attempt;
 
-    if (!attempt) {
+    const interview = await getInterviewWithQuestions(attempt.interviewId);
+    if (!interview) {
       return NextResponse.json(
-        { success: false, error: "Attempt not found" },
+        { success: false, error: "Interview not found" },
         { status: 404 }
-      );
-    }
-
-    if (attempt.status !== "IN_PROGRESS") {
-      return NextResponse.json(
-        { success: false, error: "Attempt is not in progress" },
-        { status: 400 }
       );
     }
 
     // Calculate time remaining using server time only
     const timeData = calculateTimeRemaining(
       attempt.startedAt,
-      attempt.interview.durationMinutes
+      interview.durationMinutes
     );
-
-    // Log for security monitoring
-    logTimeValidation(attemptId, timeData, "TIME_CHECK");
 
     if (timeData.isExpired) {
       // Time's up - tell client to auto-submit with current typed text.

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../../../../../lib/apiAuth";
 import { prisma } from "../../../../../../../lib/prisma";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../../../../../lib/activityLog.js";
 
@@ -12,20 +13,12 @@ export async function POST(request, { params }) {
   try {
     const { id: interviewId, attemptId } = await params;
 
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-    if (!userId || !userRole) {
-      return NextResponse.json(
-        { success: false, error: "Authentication required" },
-        { status: 401 }
-      );
-    }
-    if (!["ADMIN", "EXAMINER", "SUPERADMIN"].includes(userRole)) {
-      return NextResponse.json(
-        { success: false, error: "Insufficient permissions" },
-        { status: 403 }
-      );
-    }
+    const auth = await requireApiUser(request, {
+      roles: ["ADMIN", "EXAMINER", "SUPERADMIN"],
+    });
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
 
     const body = await request.json();
     const accessKey = typeof body?.accessKey === "string" ? body.accessKey.trim().toUpperCase() : "";

@@ -22,7 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { useMessages } from "./MessageSystem";
-import { sanitizeHtml } from "../lib/sanitize";
+import RichTextDisplay from "./RichTextDisplay";
 import InterviewResults from "./InterviewResults";
 import QuestionCards from "./QuestionCards";
 import EditInterviewDialog from "./EditInterviewDialog";
@@ -171,12 +171,14 @@ export default function InterviewDetails({ interviewId }) {
                 <h1 className="text-2xl font-bold text-gray-900">
                   {interview.type} Interview
                 </h1>
-                <div
-                  className="text-gray-600 prose prose-sm max-w-none"
-                  dangerouslySetInnerHTML={{
-                    __html: sanitizeHtml(interview.description || "No description provided"),
-                  }}
-                />
+                {interview.description ? (
+                  <RichTextDisplay
+                    html={interview.description}
+                    className="text-gray-600 text-sm"
+                  />
+                ) : (
+                  <p className="text-gray-500 text-sm">No description provided</p>
+                )}
               </div>
             </div>
 

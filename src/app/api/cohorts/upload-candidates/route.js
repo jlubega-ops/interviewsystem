@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../../lib/apiAuth";
+import { invalidateCohort } from "../../../../lib/cachedReads";
 import { prisma } from "../../../../lib/prisma";
 import { generateAccessKey, validateAccessKeyChars } from "../../../../lib/tokenUtils";
-import * as XLSX from "xlsx";
+import { parseSpreadsheetBuffer } from "../../../../lib/spreadsheet";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../../lib/activityLog.js";
 
 export const runtime = "nodejs";
@@ -9,6 +11,8 @@ export const runtime = "nodejs";
 // POST /api/cohorts/upload-candidates - Bulk upload candidates from Excel file
 export async function POST(request) {
   try {
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
     const formData = await request.formData();
     const file = formData.get("file");
     const cohortId = formData.get("cohortId");
@@ -39,12 +43,19 @@ export async function POST(request) {
       );
     }
 
-    // Parse Excel file
     const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "buffer" });
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
-    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    let data;
+    try {
+      data = await parseSpreadsheetBuffer(buffer, file.name || "");
+    } catch (parseError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: parseError.message || "Failed to parse spreadsheet",
+        },
+        { status: 400 }
+      );
+    }
 
     if (data.length < 2) {
       return NextResponse.json(
@@ -58,7 +69,7 @@ export async function POST(request) {
 
     // Get headers and validate
     const headers = data[0].map((h) => h?.toString().toLowerCase().trim());
-    const requiredColumns = ["name", "email", "phone"];
+    const requiredColumns = ["name", "email"];
     const hasAccessCode =
       headers.includes("access code") || headers.includes("access_code");
 
@@ -106,7 +117,7 @@ export async function POST(request) {
 
       const name = row[nameIndex]?.toString().trim();
       const email = row[emailIndex]?.toString().trim().toLowerCase();
-      const phone = row[phoneIndex]?.toString().trim();
+      const phone = phoneIndex >= 0 ? row[phoneIndex]?.toString().trim() : "";
       const accessCode =
         accessCodeIndex !== -1 ? row[accessCodeIndex]?.toString().trim() : "";
 
@@ -278,8 +289,8 @@ export async function POST(request) {
       }
     }
 
-    const actorId = request.headers.get("x-user-id");
-    const actorRole = request.headers.get("x-user-role");
+    const actorId = auth.user.id;
+    const actorRole = auth.user.role;
     const actor = actorId ? await prisma.user.findUnique({ where: { id: actorId }, select: { fullName: true, email: true, organisation: true } }) : null;
     await createLog({
       actorType: "USER",
@@ -293,6 +304,8 @@ export async function POST(request) {
       description: `Uploaded candidates to cohort "${cohort.name}": ${results.successCount} added, ${results.skippedCount} skipped, ${results.errorCount} errors`,
       ...getRequestMeta(request),
     });
+
+    invalidateCohort(cohortId);
 
     return NextResponse.json({
       success: true,

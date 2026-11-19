@@ -4,19 +4,29 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Save, X, Calendar, Clock, Loader2, AlertCircle, Building2 } from "lucide-react";
 import RichTextEditor from "./RichTextEditor";
+import OrganisationSelect from "./OrganisationSelect";
+import InstructionListEditor from "./InstructionListEditor";
+import ResultsPublishOptions from "./ResultsPublishOptions";
+import { cascadeResultsFlags } from "../lib/resultsPublish";
+import {
+  parseInstructionList,
+  serializeInstructionList,
+} from "../lib/cohortInstructions";
 import { useMessages, SuccessMessages, ErrorMessages } from "./MessageSystem";
 
 export default function CohortEdit({ cohortId }) {
   const [formData, setFormData] = useState({
     name: "",
     description: "",
-    instructions: "",
     organisation: "",
     openTime: "",
     closeTime: "",
     isPublished: true,
     resultsPublished: false,
+    resultsShowAttempt: false,
+    resultsShowCorrect: false,
   });
+  const [instructionItems, setInstructionItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const router = useRouter();
@@ -32,10 +42,12 @@ export default function CohortEdit({ cohortId }) {
       if (response.ok) {
         const result = await response.json();
         const cohort = result.cohort;
+        setInstructionItems(
+          parseInstructionList(cohort.instructions, { fallbackDefaults: true })
+        );
         setFormData({
           name: cohort.name || "",
           description: cohort.description || "",
-          instructions: cohort.instructions || "",
           organisation: cohort.organisation || "",
           openTime: cohort.openTime
             ? new Date(cohort.openTime).toISOString().slice(0, 16)
@@ -45,6 +57,8 @@ export default function CohortEdit({ cohortId }) {
             : "",
           isPublished: cohort.isPublished !== false,
           resultsPublished: cohort.resultsPublished === true,
+          resultsShowAttempt: cohort.resultsShowAttempt === true,
+          resultsShowCorrect: cohort.resultsShowCorrect === true,
         });
       } else {
         showError("Failed to load cohort details");
@@ -105,12 +119,16 @@ export default function CohortEdit({ cohortId }) {
         body: JSON.stringify({
           name: formData.name.trim(),
           description: formData.description,
-          instructions: formData.instructions,
+          instructions: serializeInstructionList(instructionItems),
           organisation: formData.organisation?.trim() || null,
           openTime: formData.openTime,
           closeTime: formData.closeTime,
           isPublished: formData.isPublished,
-          resultsPublished: formData.resultsPublished,
+          ...cascadeResultsFlags({
+            showScore: formData.resultsPublished,
+            showAttempt: formData.resultsShowAttempt,
+            showCorrect: formData.resultsShowCorrect,
+          }),
         }),
       });
 
@@ -189,13 +207,11 @@ export default function CohortEdit({ cohortId }) {
                 <Building2 className="w-4 h-4 inline mr-1" />
                 Organisation
               </label>
-              <input
-                type="text"
+              <OrganisationSelect
                 id="organisation"
                 value={formData.organisation}
                 onChange={(e) => handleChange("organisation", e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-gray-900 placeholder-gray-500"
-                placeholder="Enter organisation"
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-gray-900 bg-white"
               />
             </div>
 
@@ -221,11 +237,9 @@ export default function CohortEdit({ cohortId }) {
               >
                 Instructions
               </label>
-              <RichTextEditor
-                value={formData.instructions}
-                onChange={(value) => handleChange("instructions", value)}
-                placeholder="Enter instructions for candidates..."
-                height={200}
+              <InstructionListEditor
+                items={instructionItems}
+                onChange={setInstructionItems}
               />
             </div>
 
@@ -242,17 +256,28 @@ export default function CohortEdit({ cohortId }) {
               </label>
             </div>
 
-            <div className="flex items-center gap-3 pt-2">
-              <input
-                type="checkbox"
-                id="resultsPublished"
-                checked={formData.resultsPublished}
-                onChange={(e) => handleChange("resultsPublished", e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            <div className="pt-2">
+              <p className="text-sm font-medium text-gray-700 mb-2">
+                Publish results
+              </p>
+              <p className="text-xs text-gray-500 mb-3">
+                Checking a deeper option also turns on the ones above it.
+              </p>
+              <ResultsPublishOptions
+                value={{
+                  showScore: formData.resultsPublished,
+                  showAttempt: formData.resultsShowAttempt,
+                  showCorrect: formData.resultsShowCorrect,
+                }}
+                onChange={(next) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    resultsPublished: next.showScore,
+                    resultsShowAttempt: next.showAttempt,
+                    resultsShowCorrect: next.showCorrect,
+                  }))
+                }
               />
-              <label htmlFor="resultsPublished" className="text-sm font-medium text-gray-700">
-                Publish results — when on, candidates can view their attempt status and scores after completing interviews. When off, they only see a message to expect communication from EIIC.
-              </label>
             </div>
           </div>
 

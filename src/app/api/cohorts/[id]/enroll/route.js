@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../../../lib/apiAuth";
+import { invalidateCohort } from "../../../../../lib/cachedReads";
 import { prisma } from "../../../../../lib/prisma";
 import { ACCESS_KEY_SAFE_CHARS } from "../../../../../lib/tokenUtils";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../../../lib/activityLog.js";
@@ -9,6 +11,8 @@ export const runtime = "nodejs";
 // POST /api/cohorts/[id]/enroll - Enroll a candidate in a cohort
 export async function POST(request, { params }) {
   try {
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
     const { id } = await params;
     const cohortId = id;
     const body = await request.json();
@@ -25,11 +29,11 @@ export async function POST(request, { params }) {
     }
 
     // Validate required fields
-    if (!name || !email || !phone) {
+    if (!name || !email) {
       return NextResponse.json(
         {
           success: false,
-          error: "Name, email, and phone are required",
+          error: "Name and email are required",
         },
         { status: 400 }
       );
@@ -81,7 +85,7 @@ export async function POST(request, { params }) {
         data: {
           email: email,
           fullName: name,
-          phone: phone,
+          phone: typeof phone === "string" && phone.trim() ? phone.trim() : null,
           isActive: true,
         },
       });
@@ -132,9 +136,9 @@ export async function POST(request, { params }) {
       },
     });
 
-    const actorId = request.headers.get("x-user-id");
-    const actorRole = request.headers.get("x-user-role");
-    const actorEmail = request.headers.get("x-user-email");
+    const actorId = auth.user.id;
+    const actorRole = auth.user.role;
+    const actorEmail = auth.user.email;
     const actor = actorId ? await prisma.user.findUnique({ where: { id: actorId }, select: { fullName: true, organisation: true } }) : null;
     await createLog({
       actorType: "USER",
@@ -148,6 +152,8 @@ export async function POST(request, { params }) {
       description: `Assigned candidate "${enrollment.candidate.fullName}" (${enrollment.candidate.email}) to cohort "${cohort.name}" with access key`,
       ...getRequestMeta(request),
     });
+
+    invalidateCohort(cohortId);
 
     return NextResponse.json({
       success: true,

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../../lib/prisma";
+import { invalidateInterview } from "../../../../../lib/cachedReads";
 
 export const runtime = "nodejs";
 
@@ -84,6 +85,8 @@ export async function PUT(request, { params }) {
       where: { id: interviewId },
       data: { isHidden: !interview.isHidden },
     });
+
+    invalidateInterview(interviewId);
 
     return NextResponse.json({
       success: true,

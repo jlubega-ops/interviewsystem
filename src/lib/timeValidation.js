@@ -75,6 +75,7 @@ export function getServerTime() {
  * @param {string} action - Action being performed
  */
 export function logTimeValidation(attemptId, timeData, action) {
+  if (process.env.NODE_ENV === "production") return;
   console.log(`[TIME_VALIDATION] ${action} for attempt ${attemptId}:`, {
     serverTime: timeData.serverNow.toISOString(),
     timeElapsed: timeData.timeElapsed,

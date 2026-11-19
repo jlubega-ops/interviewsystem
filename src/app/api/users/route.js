@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../lib/apiAuth";
 import { prisma } from "../../../lib/prisma";
 import { sendActivationEmail } from "../../../lib/emailService";
 import crypto from "crypto";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../lib/activityLog.js";
+import { assertOrganisationName } from "../../../lib/organisations";
 
 export const runtime = "nodejs";
 
@@ -15,16 +17,11 @@ function canManageUsers(role) {
 // GET /api/users - Get all users (Admin or Superadmin)
 export async function GET(request) {
   try {
-    const userRole = request.headers.get("x-user-role");
-    const userId = request.headers.get("x-user-id");
-    const userEmail = request.headers.get("x-user-email");
-
-    if (!canManageUsers(userRole)) {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      );
-    }
+    const auth = await requireApiUser(request, { roles: ADMIN_ROLES });
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
+    const userEmail = auth.user.email;
 
     const users = await prisma.user.findMany({
       select: {
@@ -99,16 +96,11 @@ export async function GET(request) {
 // POST /api/users - Create new user (Admin or Superadmin). Sends activation email; link valid 2 days.
 export async function POST(request) {
   try {
-    const userRole = request.headers.get("x-user-role");
-    const userId = request.headers.get("x-user-id");
-    const userEmail = request.headers.get("x-user-email");
-
-    if (!canManageUsers(userRole)) {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      );
-    }
+    const auth = await requireApiUser(request, { roles: ADMIN_ROLES });
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
+    const userEmail = auth.user.email;
 
     const body = await request.json();
     const {
@@ -139,6 +131,11 @@ export async function POST(request) {
       );
     }
 
+    const orgCheck = await assertOrganisationName(organisation, { required: true });
+    if (orgCheck.error) {
+      return NextResponse.json({ error: orgCheck.error }, { status: 400 });
+    }
+
     const existingUser = await prisma.user.findUnique({
       where: { email },
     });
@@ -167,7 +164,7 @@ export async function POST(request) {
         firstName: firstName.trim(),
         middleName: middleName ? middleName.trim() : null,
         lastName: lastName.trim(),
-        organisation: organisation ? organisation.trim() : null,
+        organisation: orgCheck.name,
         phone: contact ? String(contact).trim() : null,
         role,
         isActive: true,

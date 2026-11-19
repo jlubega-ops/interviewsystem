@@ -51,10 +51,6 @@ export default function EnrollmentDialog({
       showError("Email address is required");
       return false;
     }
-    if (!formData.phone.trim()) {
-      showError("Phone number is required");
-      return false;
-    }
 
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -81,7 +77,7 @@ export default function EnrollmentDialog({
         body: JSON.stringify({
           name: formData.name.trim(),
           email: formData.email.trim(),
-          phone: formData.phone.trim(),
+          phone: formData.phone.trim() || null,
         }),
       });
 
@@ -195,7 +191,8 @@ export default function EnrollmentDialog({
               className="block text-sm font-semibold text-gray-700 mb-2"
             >
               <Phone className="w-4 h-4 inline mr-1" />
-              Phone Number *
+              Phone Number
+              <span className="text-gray-400 font-normal"> (optional)</span>
             </label>
             <input
               type="tel"
@@ -204,7 +201,6 @@ export default function EnrollmentDialog({
               onChange={(e) => handleChange("phone", e.target.value)}
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-gray-900 bg-white placeholder-gray-500"
               placeholder="Enter candidate's phone number"
-              required
             />
           </div>
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import candidateSessionManager from "../../../../lib/candidateSession";
 import { prisma } from "../../../../lib/prisma";
+import { requireEnrollment } from "../../../../lib/candidateAuth";
 
 export const runtime = "nodejs";
 
@@ -23,6 +24,9 @@ export async function POST(request) {
         { status: 400 }
       );
     }
+
+    const owned = await requireEnrollment({ candidateId, accessKey });
+    if (owned.error) return owned.error;
 
     // Verify session
     const sessionResult = await candidateSessionManager.verifySession(

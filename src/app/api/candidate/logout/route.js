@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
 import candidateSessionManager from "../../../../lib/candidateSession";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../../lib/activityLog.js";
+import { requireEnrollment } from "../../../../lib/candidateAuth.js";
 
 export const runtime = "nodejs";
 
@@ -17,7 +18,10 @@ export async function POST(request) {
       );
     }
 
-    const candidate = await prisma.candidate.findUnique({ where: { id: candidateId }, select: { fullName: true, email: true } });
+    const owned = await requireEnrollment({ candidateId, accessKey });
+    if (owned.error) return owned.error;
+
+    const candidate = await prisma.candidate.findUnique({ where: { id: candidateId }, select: { id: true, fullName: true, email: true } });
     await candidateSessionManager.deactivateSession(candidateId, accessKey);
     if (candidate) {
       await createLog({

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../../lib/apiAuth";
 import { prisma } from "../../../../lib/prisma";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../../lib/activityLog.js";
+import { assertOrganisationName } from "../../../../lib/organisations";
 
 export const runtime = "nodejs";
 
@@ -35,16 +37,11 @@ const userSelect = {
 // GET /api/users/[id] - Get user by ID (Admin or Superadmin)
 export async function GET(request, { params }) {
   try {
-    const userRole = request.headers.get("x-user-role");
-    const actorId = request.headers.get("x-user-id");
-    const actorEmail = request.headers.get("x-user-email");
-
-    if (!canManageUsers(userRole)) {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      );
-    }
+    const auth = await requireApiUser(request, { roles: ADMIN_ROLES });
+    if (auth.response) return auth.response;
+    const userRole = auth.user.role;
+    const actorId = auth.user.id;
+    const actorEmail = auth.user.email;
 
     const { id } = await params;
 
@@ -97,16 +94,11 @@ export async function GET(request, { params }) {
 // PUT /api/users/[id] - Update user, suspend (reason required), or unsuspend (Admin or Superadmin)
 export async function PUT(request, { params }) {
   try {
-    const userRole = request.headers.get("x-user-role");
-    const actorId = request.headers.get("x-user-id");
-    const actorEmail = request.headers.get("x-user-email");
-
-    if (!canManageUsers(userRole)) {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      );
-    }
+    const auth = await requireApiUser(request, { roles: ADMIN_ROLES });
+    if (auth.response) return auth.response;
+    const userRole = auth.user.role;
+    const actorId = auth.user.id;
+    const actorEmail = auth.user.email;
 
     const { id } = await params;
     const body = await request.json();
@@ -188,8 +180,15 @@ export async function PUT(request, { params }) {
     if (typeof middleName === "string")
       updateData.middleName = middleName.trim() || null;
     if (typeof lastName === "string") updateData.lastName = lastName.trim();
-    if (typeof organisation === "string")
-      updateData.organisation = organisation.trim() || null;
+    if (typeof organisation === "string") {
+      const orgCheck = await assertOrganisationName(organisation, {
+        required: true,
+      });
+      if (orgCheck.error) {
+        return NextResponse.json({ error: orgCheck.error }, { status: 400 });
+      }
+      updateData.organisation = orgCheck.name;
+    }
     if (typeof contact === "string" || typeof contact === "number")
       updateData.phone = String(contact).trim() || null;
     if (role) updateData.role = role;
@@ -265,16 +264,11 @@ export async function PUT(request, { params }) {
 // DELETE /api/users/[id] - Delete user (Admin or Superadmin)
 export async function DELETE(request, { params }) {
   try {
-    const userRole = request.headers.get("x-user-role");
-    const actorId = request.headers.get("x-user-id");
-    const actorEmail = request.headers.get("x-user-email");
-
-    if (!canManageUsers(userRole)) {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      );
-    }
+    const auth = await requireApiUser(request, { roles: ADMIN_ROLES });
+    if (auth.response) return auth.response;
+    const userRole = auth.user.role;
+    const actorId = auth.user.id;
+    const actorEmail = auth.user.email;
 
     const { id } = await params;
 

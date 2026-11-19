@@ -135,7 +135,7 @@ export default function ReportsPage() {
         )}
 
         {/* Report type tabs */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        <div className="flex flex-wrap gap-2 mb-4">
           {REPORT_TYPES.map((r) => {
             const Icon = r.icon;
             return (
@@ -143,15 +143,14 @@ export default function ReportsPage() {
                 key={r.id}
                 type="button"
                 onClick={() => setReport(r.id)}
-                className={`text-left p-4 rounded-xl border-2 transition-all ${
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm ${
                   report === r.id
                     ? "border-violet-500 bg-violet-50 text-violet-900"
-                    : "border-gray-200 bg-white hover:border-violet-200 hover:bg-violet-50/50"
+                    : "border-gray-200 bg-white text-gray-700 hover:border-violet-200"
                 }`}
               >
-                <Icon className={`w-6 h-6 mb-2 ${report === r.id ? "text-violet-600" : "text-gray-500"}`} />
-                <div className="font-semibold text-gray-900">{r.label}</div>
-                <div className="text-xs text-gray-500 mt-0.5">{r.description}</div>
+                <Icon className={`w-4 h-4 ${report === r.id ? "text-violet-600" : "text-gray-500"}`} />
+                {r.label}
               </button>
             );
           })}
@@ -270,7 +269,7 @@ function CompletionReportView({ data }) {
   const s = data.summary || {};
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="flex flex-wrap gap-2">
         <SummaryCard label="Total attempts" value={s.total ?? 0} />
         <SummaryCard label="Completed" value={s.completed ?? 0} />
         <SummaryCard label="In progress" value={s.inProgress ?? 0} />
@@ -327,7 +326,7 @@ function PerformanceReportView({ data }) {
   const s = data.summary || {};
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="flex flex-wrap gap-2">
         <SummaryCard label="Completed attempts" value={s.attemptCount ?? 0} />
         <SummaryCard label="Avg score" value={s.avgScore ?? 0} />
         <SummaryCard label="Avg %" value={`${s.avgPercent ?? 0}%`} />
@@ -488,9 +487,9 @@ function SubmissionsReportView({ data }) {
 
 function SummaryCard({ label, value }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
-      <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</div>
-      <div className="text-xl font-bold text-gray-900 mt-1">{value}</div>
+    <div className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5">
+      <span className="text-xs text-gray-500">{label}</span>
+      <span className="text-sm font-semibold text-gray-900">{value}</span>
     </div>
   );
 }

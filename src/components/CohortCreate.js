@@ -4,6 +4,9 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Save, X, Calendar, Clock, Loader2, AlertCircle, Building2 } from "lucide-react";
 import RichTextEditor from "./RichTextEditor";
+import OrganisationSelect from "./OrganisationSelect";
+import InstructionListEditor from "./InstructionListEditor";
+import { DEFAULT_COHORT_INSTRUCTIONS, serializeInstructionList } from "../lib/cohortInstructions";
 import { useMessages, SuccessMessages, ErrorMessages } from "./MessageSystem";
 
 export default function CohortCreate() {
@@ -11,11 +14,13 @@ export default function CohortCreate() {
   const [formData, setFormData] = useState({
     name: "",
     description: "",
-    instructions: "",
     organisation: "",
     openTime: "",
     closeTime: "",
   });
+  const [instructionItems, setInstructionItems] = useState([
+    ...DEFAULT_COHORT_INSTRUCTIONS,
+  ]);
   const [isSaving, setIsSaving] = useState(false);
   const router = useRouter();
   const { showSuccess, showError } = useMessages();
@@ -82,7 +87,7 @@ export default function CohortCreate() {
         body: JSON.stringify({
           name: formData.name.trim(),
           description: formData.description,
-          instructions: formData.instructions,
+          instructions: serializeInstructionList(instructionItems),
           organisation: isAdmin ? formData.organisation.trim() : undefined,
           openTime: formData.openTime,
           closeTime: formData.closeTime,
@@ -157,14 +162,12 @@ export default function CohortCreate() {
                   <Building2 className="w-4 h-4 inline mr-1" />
                   Organisation *
                 </label>
-                <input
-                  type="text"
+                <OrganisationSelect
                   id="organisation"
                   value={formData.organisation}
                   onChange={(e) => handleChange("organisation", e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-gray-900 placeholder-gray-500"
-                  placeholder="Enter organisation"
                   required={isAdmin}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-gray-900 bg-white"
                 />
               </div>
             )}
@@ -195,11 +198,9 @@ export default function CohortCreate() {
               >
                 Instructions
               </label>
-              <RichTextEditor
-                value={formData.instructions}
-                onChange={(value) => handleChange("instructions", value)}
-                placeholder="Enter instructions for candidates..."
-                height={200}
+              <InstructionListEditor
+                items={instructionItems}
+                onChange={setInstructionItems}
               />
             </div>
           </div>

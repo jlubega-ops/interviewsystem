@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { canAccessQuestionBank, canEditQuestionBank } from "@/lib/questionBankAccess";
+import { requireApiUser } from "@/lib/apiAuth";
 
 export const runtime = "nodejs";
 
@@ -8,15 +9,10 @@ export const runtime = "nodejs";
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-
-    if (!userId || !userRole) {
-      return NextResponse.json(
-        { success: false, error: "Authentication required" },
-        { status: 401 }
-      );
-    }
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
 
     const bank = await prisma.questionBank.findUnique({
       where: { id },
@@ -58,15 +54,10 @@ export async function GET(request, { params }) {
 export async function PATCH(request, { params }) {
   try {
     const { id } = await params;
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-
-    if (!userId || !userRole) {
-      return NextResponse.json(
-        { success: false, error: "Authentication required" },
-        { status: 401 }
-      );
-    }
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
 
     const bank = await prisma.questionBank.findUnique({ where: { id } });
     if (!bank) {
@@ -131,15 +122,10 @@ export async function PATCH(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-
-    if (!userId || !userRole) {
-      return NextResponse.json(
-        { success: false, error: "Authentication required" },
-        { status: 401 }
-      );
-    }
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
 
     const bank = await prisma.questionBank.findUnique({ where: { id } });
     if (!bank) {

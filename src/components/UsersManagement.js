@@ -6,7 +6,6 @@ import {
   UserPlus,
   Edit,
   Trash2,
-  Shield,
   AlertTriangle,
   CheckCircle,
   XCircle,
@@ -14,11 +13,12 @@ import {
   Mail,
   Ban,
   UserCheck,
-  Eye,
 } from "lucide-react";
 import UserForm from "./UserForm";
 import NavigationHeader from "./NavigationHeader";
 import ConfirmationDialog from "./ConfirmationDialog";
+import { useClientTable } from "../hooks/useClientTable";
+import { TableSearch, TablePager, onTableRowClick } from "./ClientTableChrome";
 
 export default function UsersManagement() {
   const [users, setUsers] = useState([]);
@@ -39,6 +39,19 @@ export default function UsersManagement() {
   const [isSuspending, setIsSuspending] = useState(false);
   const [isResendingActivation, setIsResendingActivation] = useState(false);
   const [viewUserModal, setViewUserModal] = useState(null);
+  const usersTable = useClientTable(users, {
+    pageSize: 10,
+    searchText: (u) =>
+      [
+        u.fullName,
+        u.email,
+        u.role,
+        u.organisation,
+        u.creator?.fullName,
+        u.isSuspended ? "suspended" : "",
+        u.isActivated ? "active" : "inactive",
+      ].join(" "),
+  });
 
   useEffect(() => {
     verifySession();
@@ -348,18 +361,7 @@ export default function UsersManagement() {
       />
 
       {/* Main Content */}
-      <main className="flex-1 min-h-0 overflow-auto max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
-        {/* User Info */}
-        {currentUser && (
-          <div className="mb-8 p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <div className="flex items-center space-x-2 text-sm text-blue-800">
-              <Shield className="w-4 h-4" />
-              <span>
-                Logged in as: {currentUser.email} ({currentUser.role})
-              </span>
-            </div>
-          </div>
-        )}
+      <main className="flex-1 min-h-0 overflow-auto max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-4">
 
         {/* Messages */}
         {error && (
@@ -388,27 +390,27 @@ export default function UsersManagement() {
           </div>
         )}
 
-        {/* Actions */}
-        <div className="mb-8 flex justify-between items-center">
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900">All Users</h2>
-            <p className="text-gray-600">
-              Manage system users and their permissions
-            </p>
-          </div>
+        <div className="mb-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+          <TableSearch
+            query={usersTable.query}
+            setQuery={usersTable.setQuery}
+            placeholder="Search users..."
+            filteredCount={usersTable.filteredCount}
+            totalCount={usersTable.totalCount}
+          />
           <button
             onClick={handleCreateUser}
-            className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            className="inline-flex items-center justify-center gap-2 bg-blue-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-blue-700"
           >
             <UserPlus className="w-4 h-4" />
-            <span>Add User</span>
+            Add User
           </button>
         </div>
 
         {/* Users Table */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -432,8 +434,12 @@ export default function UsersManagement() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {users.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50">
+                {usersTable.pageRows.map((user) => (
+                  <tr
+                    key={user.id}
+                    className="hover:bg-gray-50 cursor-pointer"
+                    onClick={onTableRowClick(() => setViewUserModal(user))}
+                  >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
@@ -481,13 +487,6 @@ export default function UsersManagement() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center flex-wrap gap-1">
-                        <button
-                          onClick={() => setViewUserModal(user)}
-                          className="text-gray-600 hover:text-gray-900 transition-colors p-1"
-                          title="View User"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
                         <button
                           onClick={() => handleEditUser(user)}
                           className="text-blue-600 hover:text-blue-900 transition-colors p-1"
@@ -548,6 +547,13 @@ export default function UsersManagement() {
               </tbody>
             </table>
           </div>
+          <TablePager
+            page={usersTable.page}
+            setPage={usersTable.setPage}
+            totalPages={usersTable.totalPages}
+            filteredCount={usersTable.filteredCount}
+            pageSize={usersTable.pageSize}
+          />
         </div>
 
         {users.length === 0 && (

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../lib/apiAuth";
 import { prisma } from "../../../lib/prisma";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../lib/activityLog.js";
 
@@ -13,15 +14,11 @@ const ADMIN_ROLES = ["SUPERADMIN", "ADMIN"];
  */
 export async function GET(request) {
   try {
-    const userRole = request.headers.get("x-user-role");
-    const userId = request.headers.get("x-user-id");
-    const userEmail = request.headers.get("x-user-email");
-    if (!ADMIN_ROLES.includes(userRole)) {
-      return NextResponse.json(
-        { error: "Forbidden. Admin access required." },
-        { status: 403 }
-      );
-    }
+    const auth = await requireApiUser(request, { roles: ADMIN_ROLES });
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
+    const userEmail = auth.user.email;
 
     const actor = userId ? await prisma.user.findUnique({ where: { id: userId }, select: { fullName: true, organisation: true } }) : null;
     await createLog({

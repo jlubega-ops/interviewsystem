@@ -7,42 +7,49 @@ export const runtime = "nodejs";
 
 export async function middleware(request) {
   const { pathname } = request.nextUrl;
+  const safeHeaders = new Headers(request.headers);
+  safeHeaders.delete("x-user-id");
+  safeHeaders.delete("x-user-role");
+  safeHeaders.delete("x-user-email");
 
-  // Define public routes that should not require authentication
-  const publicRoutes = ["/admin/login"];
-
-  // Check if the current path is a public route
-  if (publicRoutes.some((route) => pathname === route || pathname.startsWith(route + "/"))) {
-    return NextResponse.next();
+  // Logged-in users should never see the login page
+  if (pathname === "/admin/login" || pathname.startsWith("/admin/login/")) {
+    const { isValid } = await verifySession(request);
+    if (isValid) {
+      return NextResponse.redirect(new URL("/admin/dashboard", request.url));
+    }
+    return NextResponse.next({ request: { headers: safeHeaders } });
   }
 
   // Define protected routes with their required roles (Admin can perform all actions)
   const protectedRoutes = {
-    "/admin/dashboard": ["SUPERADMIN", "ADMIN", "EXAMINER"],
-    "/admin/cohorts": ["SUPERADMIN", "ADMIN", "EXAMINER"],
-    "/admin/interviews": ["SUPERADMIN", "ADMIN", "EXAMINER"],
-    "/admin/question-banks": ["SUPERADMIN", "ADMIN", "EXAMINER"],
+    "/admin/dashboard": ["SUPERADMIN", "ADMIN", "EXAMINER", "FACILITATOR"],
+    "/admin/cohorts": ["SUPERADMIN", "ADMIN", "EXAMINER", "FACILITATOR"],
+    "/admin/interviews": ["SUPERADMIN", "ADMIN", "EXAMINER", "FACILITATOR"],
+    "/admin/question-banks": ["SUPERADMIN", "ADMIN", "EXAMINER", "FACILITATOR"],
     "/admin/users": ["SUPERADMIN", "ADMIN"],
+    "/admin/organisations": ["SUPERADMIN"],
     "/admin/logs": ["SUPERADMIN", "ADMIN"],
     "/admin/reports": ["SUPERADMIN", "ADMIN"],
-    "/admin/profile": ["SUPERADMIN", "ADMIN", "EXAMINER"],
+    "/admin/profile": ["SUPERADMIN", "ADMIN", "EXAMINER", "FACILITATOR"],
     "/admin/settings": ["SUPERADMIN", "ADMIN"],
   };
 
   // Define API routes that need authentication
   const protectedApiRoutes = {
-    "/api/auth/verify": ["SUPERADMIN", "ADMIN", "EXAMINER"],
-    "/api/auth/profile": ["SUPERADMIN", "ADMIN", "EXAMINER"],
-    "/api/auth/change-password": ["SUPERADMIN", "ADMIN", "EXAMINER"],
-    "/api/cohorts": ["SUPERADMIN", "ADMIN", "EXAMINER"],
-    "/api/interviews": ["SUPERADMIN", "ADMIN", "EXAMINER"],
+    "/api/auth/verify": ["SUPERADMIN", "ADMIN", "EXAMINER", "FACILITATOR"],
+    "/api/auth/profile": ["SUPERADMIN", "ADMIN", "EXAMINER", "FACILITATOR"],
+    "/api/auth/change-password": ["SUPERADMIN", "ADMIN", "EXAMINER", "FACILITATOR"],
+    "/api/cohorts": ["SUPERADMIN", "ADMIN", "EXAMINER", "FACILITATOR"],
+    "/api/interviews": ["SUPERADMIN", "ADMIN", "EXAMINER", "FACILITATOR"],
     "/api/users": ["SUPERADMIN", "ADMIN"],
     "/api/logs": ["SUPERADMIN", "ADMIN"],
     "/api/candidates": ["SUPERADMIN", "ADMIN"],
     "/api/reports": ["SUPERADMIN", "ADMIN"],
-    "/api/dashboard": ["SUPERADMIN", "ADMIN", "EXAMINER"],
-    "/api/system": ["SUPERADMIN", "ADMIN", "EXAMINER"],
-    "/api/question-banks": ["SUPERADMIN", "ADMIN", "EXAMINER"],
+    "/api/dashboard": ["SUPERADMIN", "ADMIN", "EXAMINER", "FACILITATOR"],
+    "/api/system": ["SUPERADMIN", "ADMIN", "EXAMINER", "FACILITATOR"],
+    "/api/question-banks": ["SUPERADMIN", "ADMIN", "EXAMINER", "FACILITATOR"],
+    "/api/organisations": ["SUPERADMIN", "ADMIN", "EXAMINER", "FACILITATOR"],
   };
 
   // Define public API routes (no authentication required)
@@ -54,8 +61,6 @@ export async function middleware(request) {
     "/api/auth/activate-account",
     "/api/auth/reset-password",
     "/api/auth/forgot-password",
-    "/api/setup/check-database",
-    "/api/setup/superadmin",
     "/api/candidate/verify-access",
     "/api/candidate/verify-session",
     "/api/candidate/verify-interview-access",
@@ -184,11 +189,10 @@ export async function middleware(request) {
       return NextResponse.redirect(dashboardUrl);
     }
 
-    // Add user info to headers for API routes
-    const requestHeaders = new Headers(request.headers);
-    requestHeaders.set("x-user-id", user.id.toString());
-    requestHeaders.set("x-user-role", user.role);
-    requestHeaders.set("x-user-email", user.email);
+    // Add user info to headers for API routes (never trust client-supplied values)
+    safeHeaders.set("x-user-id", user.id.toString());
+    safeHeaders.set("x-user-role", user.role);
+    safeHeaders.set("x-user-email", user.email);
 
     // Debug logging for dashboard stats
     if (pathname.includes("dashboard")) {
@@ -211,7 +215,7 @@ export async function middleware(request) {
 
     const response = NextResponse.next({
       request: {
-        headers: requestHeaders,
+        headers: safeHeaders,
       },
     });
 
@@ -226,7 +230,11 @@ export async function middleware(request) {
     return response;
   }
 
-  return NextResponse.next();
+  return NextResponse.next({
+    request: {
+      headers: safeHeaders,
+    },
+  });
 }
 
 export const config = {
@@ -242,5 +250,6 @@ export const config = {
     "/api/dashboard/:path*",
     "/api/system/:path*",
     "/api/question-banks/:path*",
+    "/api/organisations/:path*",
   ],
 };

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { X, Loader2, CheckSquare, Square, ChevronLeft } from "lucide-react";
 import { useMessages } from "./MessageSystem";
-import { sanitizeHtml, stripHtmlToText } from "../lib/sanitize";
+import { htmlToPlainText } from "../lib/sanitize";
 
 export default function LoadFromQuestionBank({ isOpen, onClose, interviewId, onLoadComplete }) {
   const [step, setStep] = useState("banks");
@@ -163,7 +163,9 @@ export default function LoadFromQuestionBank({ isOpen, onClose, interviewId, onL
                           className="sr-only"
                         />
                         <div className="flex-1 min-w-0 text-sm">
-                          <span className="text-gray-700 line-clamp-2" dangerouslySetInnerHTML={{ __html: sanitizeHtml((q.questionText || "").slice(0, 120)) }} />
+                          <span className="text-gray-700 line-clamp-2">
+                            {htmlToPlainText(q.questionText || "")}
+                          </span>
                           <span className="text-gray-500"> · {q.points ?? 1} pt</span>
                         </div>
                       </label>

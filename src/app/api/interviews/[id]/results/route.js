@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../../../lib/apiAuth";
 import { prisma } from "../../../../../lib/prisma";
-import { verifySession } from "../../../../../middleware/auth";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../../../lib/activityLog.js";
+import { resolveCorrectLetter } from "../../../../../lib/questionOptions";
 
 export const runtime = "nodejs";
 
@@ -28,44 +29,19 @@ function typingPointsEarned(typingStats, questionPoints) {
   return Math.min(points, questionPoints);
 }
 
-function resolveCorrectToOptionLetter(question) {
-  const raw = (question?.correctAnswer ?? "").toString().trim();
-  if (!raw) return "";
-  const upper = raw.toUpperCase();
-  const options = Array.isArray(question?.options) ? question.options : [];
-  // If stored as single letter, treat as option.letter
-  if (/^[A-Z]$/i.test(upper)) return upper.slice(0, 1);
-  // Otherwise try match by option text
-  const byText = options.find(
-    (opt) =>
-      opt &&
-      typeof opt.text === "string" &&
-      opt.text.trim().toLowerCase() === raw.toLowerCase()
-  );
-  if (byText && typeof byText.letter === "string") {
-    return byText.letter.trim().toUpperCase();
-  }
-  return upper.slice(0, 1);
-}
-
 // GET /api/interviews/[id]/results - Get interview results for a specific interview
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
 
-    // Get user info from headers (set by middleware)
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-    const userEmail = request.headers.get("x-user-email");
+    const auth = await requireApiUser(request, {
+      roles: ["ADMIN", "EXAMINER", "SUPERADMIN"],
+    });
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
+    const userEmail = auth.user.email;
 
-    if (!userId || !userRole) {
-      return NextResponse.json(
-        { success: false, error: "Authentication required" },
-        { status: 401 }
-      );
-    }
-
-    // Check if user has permission to view results
     if (!["ADMIN", "EXAMINER", "SUPERADMIN"].includes(userRole)) {
       return NextResponse.json(
         { success: false, error: "Insufficient permissions" },
@@ -83,7 +59,7 @@ export async function GET(request, { params }) {
           },
         },
         questions: {
-          orderBy: { id: "asc" },
+          orderBy: { orderIndex: "asc" },
         },
       },
     });
@@ -164,35 +140,44 @@ export async function GET(request, { params }) {
         answeredQuestions: answeredQuestions,
         totalPoints: totalPoints,
         typingStats: typingStats,
-        // Show canonical option letters (A/B/C/D) so results match the question-set view (green = correct).
-        questions: [...attempt.candidateAnswers]
-          .sort(
-            (a, b) =>
-              (a.question?.orderIndex ?? 0) - (b.question?.orderIndex ?? 0)
-          )
-          .map((answer, index) => {
-          const pointsEarned = isTypingInterview && answer.typingStats
-            ? typingPointsEarned(answer.typingStats, answer.question.points)
-            : (answer.isCorrect ? answer.question.points : 0);
-          const correctOptionLetter = resolveCorrectToOptionLetter(answer.question);
+        questions: interview.questions.map((question, index) => {
+          const answer = attempt.candidateAnswers.find(
+            (ca) => ca.questionId === question.id
+          );
+          const answered =
+            answer?.answer != null && String(answer.answer).trim() !== "";
+          const pointsEarned = !answered
+            ? 0
+            : isTypingInterview && answer.typingStats
+              ? typingPointsEarned(answer.typingStats, question.points)
+              : answer.isCorrect
+                ? question.points
+                : 0;
+          const correctOptionLetter = resolveCorrectLetter(question);
           const candidateLetter =
             interview.type === "TYPING"
-              ? answer.answer
-              : (answer.answer && String(answer.answer).trim().toUpperCase().slice(0, 1)) || "";
+              ? answer?.answer || ""
+              : (answer?.answer &&
+                  String(answer.answer).trim().toUpperCase().slice(0, 1)) ||
+                "";
           const correctLetter =
             interview.type === "TYPING"
               ? "N/A (Typing Test)"
               : correctOptionLetter;
           return {
+            questionId: question.id,
             questionNumber: index + 1,
-            questionText: answer.question.questionText,
-            userAnswer: answer.answer,
+            questionText: question.questionText,
+            questionType: question.questionType,
+            options: Array.isArray(question.options) ? question.options : [],
+            userAnswer: answer?.answer ?? "",
             candidateAnswer: candidateLetter,
             correctAnswer: correctLetter,
-            isCorrect: answer.isCorrect,
-            points: answer.question.points,
+            isCorrect: answered ? Boolean(answer.isCorrect) : false,
+            unanswered: !answered,
+            points: question.points,
             pointsEarned,
-            typingStats: answer.typingStats,
+            typingStats: answer?.typingStats ?? null,
           };
         }),
       };

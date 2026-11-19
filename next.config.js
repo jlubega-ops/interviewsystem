@@ -1,18 +1,29 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Use Node.js runtime for all API routes by default
-  serverExternalPackages: ["mysql2", "bcryptjs"],
-
-  // Disable caching to prevent stale data
-  experimental: {
-    staleTimes: {
-      dynamic: 0,
-      static: 0,
-    },
-  },
-
-  // Disable static optimization for dynamic content
+  serverExternalPackages: ["mysql2", "bcryptjs", "exceljs"],
   trailingSlash: false,
+  async headers() {
+    return [
+      {
+        source: "/_next/static/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      {
+        source: "/images/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400, stale-while-revalidate=604800",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig;

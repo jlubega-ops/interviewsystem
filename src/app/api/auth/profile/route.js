@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../../lib/apiAuth";
 import { prisma } from "../../../../lib/prisma";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../../lib/activityLog.js";
+import { assertOrganisationName } from "../../../../lib/organisations";
 
 export const runtime = "nodejs";
 
@@ -24,11 +26,10 @@ const profileSelect = {
 // GET /api/auth/profile - Get current user profile (for profile page)
 export async function GET(request) {
   try {
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -65,17 +66,24 @@ export async function GET(request) {
 // PATCH /api/auth/profile - Update current user profile (only organisation and phone)
 export async function PATCH(request) {
   try {
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
 
     const body = await request.json();
     const { organisation, contact } = body;
 
     const updateData = {};
-    if (typeof organisation === "string") updateData.organisation = organisation.trim() || null;
+    if (typeof organisation === "string") {
+      const orgCheck = await assertOrganisationName(organisation, {
+        required: true,
+      });
+      if (orgCheck.error) {
+        return NextResponse.json({ error: orgCheck.error }, { status: 400 });
+      }
+      updateData.organisation = orgCheck.name;
+    }
     if (typeof contact === "string" || typeof contact === "number") updateData.phone = String(contact).trim() || null;
 
     if (Object.keys(updateData).length === 0) {

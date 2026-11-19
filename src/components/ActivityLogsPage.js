@@ -10,7 +10,6 @@ import {
   ChevronRight,
   RefreshCw,
   AlertTriangle,
-  Eye,
 } from "lucide-react";
 import NavigationHeader from "./NavigationHeader";
 
@@ -48,6 +47,9 @@ const ACTION_TYPE_OPTIONS = [
   { value: "UNSUSPEND_USER", label: "Unsuspend User" },
   { value: "RESEND_ACTIVATION", label: "Resend Activation" },
   { value: "RESET_PASSWORD_EMAIL", label: "Reset Password Email" },
+  { value: "CREATE_ORGANISATION", label: "Create Organisation" },
+  { value: "EDIT_ORGANISATION", label: "Edit Organisation" },
+  { value: "DELETE_ORGANISATION", label: "Delete Organisation" },
   { value: "VIEW_PROFILE", label: "View Profile" },
   { value: "UPDATE_PROFILE", label: "Update Profile" },
   { value: "CANDIDATE_VIEW_HOME", label: "Candidate View Home" },
@@ -374,9 +376,6 @@ export default function ActivityLogsPage() {
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Description
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -387,7 +386,14 @@ export default function ActivityLogsPage() {
                       const isUser = log.actorType === "USER" && log.userId;
                       const isCandidate = log.actorType === "CANDIDATE" && log.candidateId;
                       return (
-                        <tr key={log.id} className="hover:bg-gray-50">
+                        <tr
+                          key={log.id}
+                          className="hover:bg-gray-50 cursor-pointer"
+                          onClick={(event) => {
+                            if (event.target.closest("a, button, input, select, textarea, label")) return;
+                            handleViewLogDetail(log);
+                          }}
+                        >
                           <td className="px-4 py-3 text-sm">
                             {isUser ? (
                               <button
@@ -434,17 +440,6 @@ export default function ActivityLogsPage() {
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-700 max-w-md truncate" title={log.description}>
                             {log.description || "—"}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => handleViewLogDetail(log)}
-                              className="inline-flex items-center gap-1 px-2 py-1 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
-                              title="View full log"
-                            >
-                              <Eye className="w-4 h-4" />
-                              View
-                            </button>
                           </td>
                         </tr>
                       );

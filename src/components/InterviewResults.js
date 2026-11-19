@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import {
   Download,
-  Eye,
   Trash2,
   Clock,
   User,
@@ -13,9 +12,15 @@ import {
   Award,
   ArrowLeft,
   FileText,
+  ChevronsDownUp,
+  ChevronsUpDown,
 } from "lucide-react";
 import { generatePDF } from "./PDFExport";
-import { sanitizeHtml } from "../lib/sanitize";
+import { htmlToPlainText } from "../lib/sanitize";
+import { useClientTable } from "../hooks/useClientTable";
+import { TableSearch, TablePager, onTableRowClick } from "./ClientTableChrome";
+import QuestionOptionsPanel from "./QuestionOptionsPanel";
+import { useExpandableIds } from "../hooks/useExpandableIds";
 import { getSubmissionReasonLabel } from "../lib/submissionReasons";
 import DeleteAttemptModal from "./DeleteAttemptModal";
 import DeleteAttemptsBulkModal from "./DeleteAttemptsBulkModal";
@@ -34,8 +39,23 @@ export default function InterviewResults({ interviewId, interviewType }) {
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
+  const resultQuestionIds = (selectedAttempt?.questions || []).map(
+    (q) => q.questionId || q.questionNumber
+  );
+  const optionExpand = useExpandableIds(resultQuestionIds);
 
-  const allIds = results.map((r) => r.attemptId).filter(Boolean);
+  const table = useClientTable(results, {
+    pageSize: 10,
+    searchText: (r) =>
+      [
+        r.candidateName,
+        r.candidateEmail,
+        r.candidatePhone,
+        r.accessKey,
+        r.status,
+      ].join(" "),
+  });
+  const allIds = table.filtered.map((r) => r.attemptId).filter(Boolean);
   const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.has(id));
   const selectedCount = selectedIds.size;
 
@@ -262,6 +282,15 @@ export default function InterviewResults({ interviewId, interviewType }) {
 
       {/* Results Table */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="p-3 border-b border-gray-200">
+          <TableSearch
+            query={table.query}
+            setQuery={table.setQuery}
+            placeholder="Search attempts..."
+            filteredCount={table.filteredCount}
+            totalCount={table.totalCount}
+          />
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -301,12 +330,16 @@ export default function InterviewResults({ interviewId, interviewType }) {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {results.map((result, index) => (
+              {table.pageRows.map((result, index) => (
                 <tr
                   key={result.attemptId}
-                  className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}
+                  className={`${index % 2 === 0 ? "bg-white" : "bg-gray-50"} cursor-pointer hover:bg-blue-50`}
+                  onClick={onTableRowClick(() => {
+                    setSelectedAttempt(result);
+                    setShowDetails(true);
+                  })}
                 >
-                  <td className="px-4 py-4 whitespace-nowrap">
+                  <td className="px-4 py-2 whitespace-nowrap">
                     <input
                       type="checkbox"
                       checked={selectedIds.has(result.attemptId)}
@@ -393,17 +426,6 @@ export default function InterviewResults({ interviewId, interviewType }) {
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center space-x-2">
                       <button
-                        onClick={() => {
-                          setSelectedAttempt(result);
-                          setShowDetails(true);
-                        }}
-                        className="text-blue-600 hover:text-blue-900 flex items-center"
-                        title="View details"
-                        aria-label="View details"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </button>
-                      <button
                         onClick={() => setAttemptToDelete(result)}
                         className="text-red-600 hover:text-red-800 flex items-center"
                         title="Delete attempt"
@@ -418,6 +440,13 @@ export default function InterviewResults({ interviewId, interviewType }) {
             </tbody>
           </table>
         </div>
+        <TablePager
+          page={table.page}
+          setPage={table.setPage}
+          totalPages={table.totalPages}
+          filteredCount={table.filteredCount}
+          pageSize={table.pageSize}
+        />
       </div>
 
       {/* Details Modal - portaled to body so it floats above parent */}
@@ -467,11 +496,27 @@ export default function InterviewResults({ interviewId, interviewType }) {
 
             {/* Question responses - main scrollable area */}
             <div className="flex-1 min-h-0 flex flex-col">
-              <h4 className="font-medium text-gray-900 mb-2 flex-shrink-0">Question Responses</h4>
+              <div className="flex items-center justify-between mb-2 flex-shrink-0">
+                <h4 className="font-medium text-gray-900">Question Responses</h4>
+                <button
+                  type="button"
+                  onClick={optionExpand.toggleAll}
+                  className="inline-flex items-center gap-1 text-xs text-blue-700 hover:text-blue-900 cursor-pointer"
+                >
+                  {optionExpand.allExpanded ? (
+                    <ChevronsDownUp className="w-4 h-4" />
+                  ) : (
+                    <ChevronsUpDown className="w-4 h-4" />
+                  )}
+                  {optionExpand.allExpanded ? "Collapse all options" : "Expand all options"}
+                </button>
+              </div>
               <div className="space-y-2 overflow-y-auto min-h-0 flex-1 pr-1">
-                    {selectedAttempt.questions.map((q, index) => (
+                    {selectedAttempt.questions.map((q, index) => {
+                      const qKey = q.questionId || q.questionNumber || index;
+                      return (
                       <div
-                        key={index}
+                        key={qKey}
                         className="border border-gray-200 rounded-lg p-3"
                       >
                         <div className="flex justify-between items-start mb-2">
@@ -480,26 +525,25 @@ export default function InterviewResults({ interviewId, interviewType }) {
                           </span>
                           <span
                             className={`text-xs px-2 py-1 rounded ${
-                              q.isCorrect
-                                ? "bg-green-100 text-green-800"
-                                : "bg-red-100 text-red-800"
+                              q.unanswered
+                                ? "bg-gray-100 text-gray-700"
+                                : q.isCorrect
+                                  ? "bg-green-100 text-green-800"
+                                  : "bg-red-100 text-red-800"
                             }`}
                           >
-                            {q.isCorrect ? "Correct" : "Incorrect"}
+                            {q.unanswered ? "Not answered" : q.isCorrect ? "Correct" : "Incorrect"}
                           </span>
                         </div>
-                        <div
-                          className="text-sm text-gray-700 mb-2"
-                          dangerouslySetInnerHTML={{
-                            __html: sanitizeHtml(q.questionText),
-                          }}
-                        />
+                        <p className="text-sm text-gray-700 mb-2">
+                          {htmlToPlainText(q.questionText)}
+                        </p>
                         <div className="grid grid-cols-2 gap-2 text-xs">
                           <div>
                             <span className="text-gray-500">
                               Candidate Answer:
                             </span>{" "}
-                            {q.candidateAnswer || "No answer"}
+                            {q.unanswered ? "Not answered" : q.candidateAnswer || "No answer"}
                           </div>
                           <div>
                             <span className="text-gray-500">
@@ -508,11 +552,20 @@ export default function InterviewResults({ interviewId, interviewType }) {
                             {q.correctAnswer}
                           </div>
                         </div>
+                        <QuestionOptionsPanel
+                          options={q.options}
+                          correctAnswer={q.correctAnswer}
+                          candidateAnswer={q.unanswered ? "" : q.candidateAnswer}
+                          showCorrect
+                          expanded={optionExpand.isExpanded(qKey)}
+                          onToggle={() => optionExpand.toggle(qKey)}
+                        />
                         <div className="text-xs text-gray-500 mt-1">
                           Points: {q.pointsEarned} / {q.points}
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
               </div>
             </div>
           </div>

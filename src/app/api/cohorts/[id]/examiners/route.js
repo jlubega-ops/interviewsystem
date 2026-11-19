@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../../../lib/apiAuth";
 import { prisma } from "../../../../../lib/prisma";
 import { sendActivationEmail } from "../../../../../lib/emailService";
 import crypto from "crypto";
@@ -13,10 +14,9 @@ function isAdmin(role) {
 // GET /api/cohorts/[id]/examiners - List examiners assigned to this cohort
 export async function GET(request, { params }) {
   try {
-    const userRole = request.headers.get("x-user-role");
-    if (!isAdmin(userRole)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const auth = await requireApiUser(request, { roles: ["SUPERADMIN", "ADMIN"] });
+    if (auth.response) return auth.response;
+    const userRole = auth.user.role;
     const { id: cohortId } = await params;
     const cohort = await prisma.cohort.findUnique({
       where: { id: cohortId },
@@ -74,10 +74,9 @@ export async function GET(request, { params }) {
 // POST /api/cohorts/[id]/examiners - Assign examiner (existing userId or create new user)
 export async function POST(request, { params }) {
   try {
-    const userRole = request.headers.get("x-user-role");
-    if (!isAdmin(userRole)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const auth = await requireApiUser(request, { roles: ["SUPERADMIN", "ADMIN"] });
+    if (auth.response) return auth.response;
+    const userRole = auth.user.role;
     const { id: cohortId } = await params;
     const cohort = await prisma.cohort.findUnique({
       where: { id: cohortId },
@@ -113,7 +112,7 @@ export async function POST(request, { params }) {
       const fullName = [firstName, middleName, lastName].filter(Boolean).join(" ").trim() || `${firstName} ${lastName}`.trim();
       const activationToken = crypto.randomBytes(32).toString("hex");
       const expiresAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
-      const assignerId = request.headers.get("x-user-id") ?? null;
+      const assignerId = auth.user.id;
       const user = await prisma.user.create({
         data: {
           email,
@@ -141,14 +140,14 @@ export async function POST(request, { params }) {
         data: { cohortId, userId: user.id, assignedBy: assignerId },
       });
       const cohortName = (await prisma.cohort.findUnique({ where: { id: cohortId }, select: { name: true } }))?.name;
-      const actor = await prisma.user.findUnique({ where: { id: request.headers.get("x-user-id") }, select: { fullName: true, email: true, organisation: true } });
+      const actor = await prisma.user.findUnique({ where: { id: auth.user.id }, select: { fullName: true, email: true, organisation: true } });
       await createLog({
         actorType: "USER",
-        userId: request.headers.get("x-user-id"),
+        userId: auth.user.id,
         actorName: actor?.fullName ?? null,
         actorEmail: actor?.email ?? null,
         actorOrg: actor?.organisation ?? null,
-        actorRole: request.headers.get("x-user-role"),
+        actorRole: auth.user.role,
         actionType: ACTION_TYPES.ASSIGN_EXAMINER,
         resource: "cohort",
         description: `Assigned examiner "${user.fullName}" (${user.email}) to cohort "${cohortName ?? cohortId}"`,
@@ -196,20 +195,20 @@ export async function POST(request, { params }) {
         { status: 400 }
       );
     }
-    const assignerId = request.headers.get("x-user-id") ?? null;
+    const assignerId = auth.user.id;
     await prisma.cohortExaminer.create({
       data: { cohortId, userId, assignedBy: assignerId },
     });
     const cohortName = (await prisma.cohort.findUnique({ where: { id: cohortId }, select: { name: true } }))?.name;
     const assignedUser = await prisma.user.findUnique({ where: { id: userId }, select: { fullName: true, email: true } });
-    const actor = await prisma.user.findUnique({ where: { id: request.headers.get("x-user-id") }, select: { fullName: true, email: true, organisation: true } });
+    const actor = await prisma.user.findUnique({ where: { id: auth.user.id }, select: { fullName: true, email: true, organisation: true } });
     await createLog({
       actorType: "USER",
-      userId: request.headers.get("x-user-id"),
+      userId: auth.user.id,
       actorName: actor?.fullName ?? null,
       actorEmail: actor?.email ?? null,
       actorOrg: actor?.organisation ?? null,
-      actorRole: request.headers.get("x-user-role"),
+      actorRole: auth.user.role,
       actionType: ACTION_TYPES.ASSIGN_EXAMINER,
       resource: "cohort",
       description: `Assigned examiner "${assignedUser?.fullName}" (${assignedUser?.email}) to cohort "${cohortName ?? cohortId}"`,

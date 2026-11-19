@@ -14,11 +14,12 @@ import {
   EyeOff,
 } from "lucide-react";
 import { useMessages, MessageDisplay } from "./MessageSystem";
-import { sanitizeHtml } from "../lib/sanitize";
+import RichTextDisplay from "./RichTextDisplay";
 import { useServerTime } from "../hooks/useServerTime";
 import { useCandidateIdleLogout } from "../hooks/useCandidateIdleLogout";
 import { useOfflineDetection } from "../hooks/useOfflineDetection";
 import OfflineOverlay from "./OfflineOverlay";
+import { getCandidateCredentials } from "../lib/candidateCredentials";
 
 export default function CandidateAttempt() {
   const { serverNow } = useServerTime();
@@ -248,6 +249,7 @@ export default function CandidateAttempt() {
                     answers: answers || {},
                     timeSpent: Math.floor((now - startTimeRef.current) / 1000),
                     submissionReason: submittedBecauseLeft ? "LEFT_APPLICATION" : "TIME_UP",
+                    ...getCandidateCredentials(),
                   };
 
                   // Auto-submitting with retrieved attemptId
@@ -333,6 +335,7 @@ export default function CandidateAttempt() {
           answers: answers || {},
           timeSpent: Math.floor((now - startTimeRef.current) / 1000),
           submissionReason: submittedBecauseLeft ? "LEFT_APPLICATION" : "TIME_UP",
+          ...getCandidateCredentials(),
         };
 
         // Auto-submitting attempt
@@ -404,7 +407,7 @@ export default function CandidateAttempt() {
             headers: {
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ attemptId }),
+            body: JSON.stringify({ attemptId, ...getCandidateCredentials() }),
           });
 
           if (response.ok) {
@@ -461,6 +464,7 @@ export default function CandidateAttempt() {
         body: JSON.stringify({
           attemptId: attemptId,
           questionIds: currentPageQuestionIds,
+          ...getCandidateCredentials(),
         }),
       });
 
@@ -672,6 +676,7 @@ export default function CandidateAttempt() {
             attemptId: attemptId,
             questionId: questionId,
             answer: answer,
+            ...getCandidateCredentials(),
           }),
         });
       } catch (error) {
@@ -703,8 +708,9 @@ export default function CandidateAttempt() {
           },
           body: JSON.stringify({
             attemptId: attemptId,
-            questionId: parseInt(questionId),
+            questionId: questionId,
             answer: answer,
+            ...getCandidateCredentials(),
           }),
         });
       }
@@ -763,6 +769,7 @@ export default function CandidateAttempt() {
           answers: answers,
           timeSpent: Math.floor(((serverNow || new Date()) - startTimeRef.current) / 1000),
           submissionReason: "SELF_SUBMITTED",
+          ...getCandidateCredentials(),
         }),
       });
 
@@ -910,11 +917,9 @@ export default function CandidateAttempt() {
                     {(currentPage - 1) * QUESTIONS_PER_PAGE + index + 1}
                   </span>
                   <div className="flex-1">
-                    <div
+                    <RichTextDisplay
+                      html={question.questionText}
                       className="text-lg font-medium text-gray-900 mb-4"
-                      dangerouslySetInnerHTML={{
-                        __html: sanitizeHtml(question.questionText),
-                      }}
                     />
 
                     <div className="space-y-3">
@@ -955,15 +960,13 @@ export default function CandidateAttempt() {
                             >
                               {displayLetter}
                             </span>
-                            <span
+                            <RichTextDisplay
+                              html={option.text}
                               className={`flex-1 ${
                                 isSelected
                                   ? "text-blue-900 font-medium"
                                   : "text-gray-900"
                               }`}
-                              dangerouslySetInnerHTML={{
-                                __html: sanitizeHtml(option.text),
-                              }}
                             />
                           </label>
                         );

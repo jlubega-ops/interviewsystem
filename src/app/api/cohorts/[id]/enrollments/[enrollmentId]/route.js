@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../../../../lib/apiAuth";
+import { invalidateCohort, invalidateEnrollment } from "../../../../../../lib/cachedReads";
 import { prisma } from "../../../../../../lib/prisma";
 import { ACCESS_KEY_SAFE_CHARS } from "../../../../../../lib/tokenUtils";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../../../../lib/activityLog.js";
@@ -14,9 +16,11 @@ export async function PUT(request, { params }) {
     const enrollmentId = enrollmentIdParam;
     const body = await request.json();
     const { action } = body;
-    const actorId = request.headers.get("x-user-id");
-    const actorRole = request.headers.get("x-user-role");
-    const actorEmail = request.headers.get("x-user-email");
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
+    const actorId = auth.user.id;
+    const actorRole = auth.user.role;
+    const actorEmail = auth.user.email;
 
     if (!cohortId || !enrollmentId) {
       return NextResponse.json(
@@ -129,6 +133,9 @@ export async function PUT(request, { params }) {
       ...getRequestMeta(request),
     });
 
+    invalidateCohort(cohortId);
+    if (updatedEnrollment?.accessKey) invalidateEnrollment(updatedEnrollment.accessKey);
+
     return NextResponse.json({
       success: true,
       enrollment: updatedEnrollment,
@@ -152,9 +159,11 @@ export async function DELETE(request, { params }) {
     const { id, enrollmentId: enrollmentIdParam } = await params;
     const cohortId = id;
     const enrollmentId = enrollmentIdParam;
-    const actorId = request.headers.get("x-user-id");
-    const actorRole = request.headers.get("x-user-role");
-    const actorEmail = request.headers.get("x-user-email");
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
+    const actorId = auth.user.id;
+    const actorRole = auth.user.role;
+    const actorEmail = auth.user.email;
 
     if (!cohortId || !enrollmentId) {
       return NextResponse.json(
@@ -227,6 +236,8 @@ export async function DELETE(request, { params }) {
       description: `Unassigned candidate "${candidateName}" (${candidateEmail}) from cohort "${cohort?.name ?? cohortId}"`,
       ...getRequestMeta(request),
     });
+
+    invalidateCohort(cohortId);
 
     return NextResponse.json({
       success: true,

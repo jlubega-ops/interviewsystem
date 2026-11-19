@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { canEditQuestionBank } from "@/lib/questionBankAccess";
 import { parseQuestions } from "@/lib/questionParser";
+import { requireApiUser } from "@/lib/apiAuth";
 
 export const runtime = "nodejs";
 
@@ -15,11 +16,10 @@ function optionsToStoredFormat(optionsArray) {
 export async function POST(request, { params }) {
   try {
     const { id } = await params;
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-    if (!userId || !userRole) {
-      return NextResponse.json({ success: false, error: "Authentication required" }, { status: 401 });
-    }
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
     const bank = await prisma.questionBank.findUnique({ where: { id } });
     if (!bank) return NextResponse.json({ success: false, error: "Question bank not found" }, { status: 404 });
     if (!canEditQuestionBank(userId, userRole, bank)) {

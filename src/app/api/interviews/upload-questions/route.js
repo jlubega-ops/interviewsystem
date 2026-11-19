@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../../lib/apiAuth";
+import { invalidateInterview } from "../../../../lib/cachedReads";
 import { prisma } from "../../../../lib/prisma";
 import { parseQuestions } from "../../../../lib/questionParser";
 
@@ -7,6 +9,8 @@ export const runtime = "nodejs";
 // POST /api/interviews/upload-questions - Bulk upload questions from text
 export async function POST(request) {
   try {
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
     const { interviewId, questionText } = await request.json();
 
     if (!interviewId) {
@@ -167,6 +171,10 @@ export async function POST(request) {
           },
         },
       });
+    }
+
+    if (results.successCount > 0) {
+      invalidateInterview(interviewIdStr);
     }
 
     return NextResponse.json({

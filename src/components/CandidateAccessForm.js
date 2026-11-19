@@ -146,20 +146,6 @@ export default function CandidateAccessForm() {
         </div>
       )}
 
-      {/* Instructions */}
-      <div className="mb-6 p-4 bg-blue-50 rounded-xl border border-blue-200">
-        <h3 className="text-sm font-semibold text-blue-900 mb-2">
-          How to get your access key:
-        </h3>
-        <div className="text-sm text-blue-800 space-y-1">
-          <p>• Contact your interviewer or HR department</p>
-          <p>• Check your email for interview invitation</p>
-          <p>• Access key is case-sensitive</p>
-          <p>• Contact support if you don&apos;t have an access key</p>
-        </div>
-      </div>
-
-      {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
           <label
@@ -174,7 +160,7 @@ export default function CandidateAccessForm() {
               id="accessKey"
               value={accessKey}
               onChange={(e) => {
-                setAccessKey(e.target.value);
+                setAccessKey(e.target.value.toUpperCase());
                 if (error) setError("");
               }}
               className="w-full px-4 py-3 pl-12 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-gray-900 bg-white placeholder-gray-500"
@@ -204,16 +190,6 @@ export default function CandidateAccessForm() {
           )}
         </button>
       </form>
-
-      {/* Help Section */}
-      <div className="mt-8 p-4 bg-gray-50 rounded-xl border border-gray-200">
-        <h3 className="text-sm font-semibold text-gray-900 mb-2">Need Help?</h3>
-        <div className="text-sm text-gray-700 space-y-1">
-          <p>• Make sure you have the correct access key</p>
-          <p>• Check your internet connection</p>
-          <p>• Contact your interviewer if you&apos;re having trouble</p>
-        </div>
-      </div>
     </div>
   );
 }

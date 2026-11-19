@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
+import { requireOwnedAttempt } from "../../../../lib/candidateAuth";
 
 export const runtime = "nodejs";
 
 // POST /api/candidate/get-answers - Get saved answers for specific questions
 export async function POST(request) {
   try {
-    const { attemptId, questionIds } = await request.json();
+    const { attemptId, questionIds, accessKey, candidateId } = await request.json();
 
     if (!attemptId || !questionIds || !Array.isArray(questionIds)) {
       return NextResponse.json(
@@ -15,11 +16,17 @@ export async function POST(request) {
       );
     }
 
-    // Get saved answers for the specified questions
+    const owned = await requireOwnedAttempt({
+      attemptId,
+      accessKey,
+      candidateId,
+    });
+    if (owned.error) return owned.error;
+
     const savedAnswers = await prisma.candidateAnswer.findMany({
       where: {
-        sessionId: attemptId,
-        questionId: { in: questionIds },
+        sessionId: owned.attempt.id,
+        questionId: { in: questionIds.map(String) },
       },
       select: {
         questionId: true,
@@ -27,7 +34,6 @@ export async function POST(request) {
       },
     });
 
-    // Convert to object for easy lookup
     const answers = {};
     savedAnswers.forEach((answer) => {
       answers[answer.questionId] = answer.answer;

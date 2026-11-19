@@ -24,14 +24,21 @@ export default function BulkCandidateUpload({ cohortId, onUploadComplete }) {
     if (!file) return;
 
     // Validate file type
+    const name = file.name.toLowerCase();
     const validTypes = [
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
-      "application/vnd.ms-excel", // .xls
-      "text/csv", // .csv
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-excel",
+      "text/csv",
+      "application/csv",
     ];
+    const validExt = name.endsWith(".xlsx") || name.endsWith(".csv");
 
-    if (!validTypes.includes(file.type)) {
-      showError("Please select a valid Excel file (.xlsx, .xls) or CSV file");
+    if (!validExt && !validTypes.includes(file.type)) {
+      showError("Please select a valid Excel file (.xlsx) or CSV file");
+      return;
+    }
+    if (name.endsWith(".xls") && !name.endsWith(".xlsx")) {
+      showError("Old .xls files are not supported. Save as .xlsx or .csv and try again.");
       return;
     }
 
@@ -133,7 +140,7 @@ export default function BulkCandidateUpload({ cohortId, onUploadComplete }) {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".xlsx,.xls,.csv"
+            accept=".xlsx,.csv"
             onChange={handleFileSelect}
             className="hidden"
             disabled={isUploading}
@@ -148,7 +155,7 @@ export default function BulkCandidateUpload({ cohortId, onUploadComplete }) {
                   : "Click to select Excel file or drag and drop"}
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Supported formats: .xlsx, .xls, .csv (Max 5MB)
+                Supported formats: .xlsx, .csv (Max 5MB)
               </p>
             </div>
 

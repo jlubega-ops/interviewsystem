@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../../../lib/apiAuth";
 import { prisma } from "../../../../../lib/prisma";
 import { getSubmissionReasonLabel } from "../../../../../lib/submissionReasons";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../../../lib/activityLog.js";
+import { formatOptionsLine, resolveCorrectLetter } from "../../../../../lib/questionOptions";
 
 export const runtime = "nodejs";
 
@@ -29,19 +31,14 @@ export async function GET(request, { params }) {
   try {
     const { id } = await params;
 
-    // Get user info from headers (set by middleware)
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-    const userEmail = request.headers.get("x-user-email");
+    const auth = await requireApiUser(request, {
+      roles: ["ADMIN", "EXAMINER", "SUPERADMIN"],
+    });
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
+    const userEmail = auth.user.email;
 
-    if (!userId || !userRole) {
-      return NextResponse.json(
-        { success: false, error: "Authentication required" },
-        { status: 401 }
-      );
-    }
-
-    // Check if user has permission to export results
     if (!["ADMIN", "EXAMINER", "SUPERADMIN"].includes(userRole)) {
       return NextResponse.json(
         { success: false, error: "Insufficient permissions" },
@@ -122,8 +119,10 @@ export async function GET(request, { params }) {
           ...interview.questions
             .map((q, index) => [
               `Q${index + 1} Question`,
+              `Q${index + 1} Options`,
               `Q${index + 1} Student Answer`,
               `Q${index + 1} Correct Answer`,
+              `Q${index + 1} Answered`,
               `Q${index + 1} Points`,
               `Q${index + 1} Points Earned`,
               `Q${index + 1} Correct`,
@@ -181,25 +180,31 @@ export async function GET(request, { params }) {
         totalPoints: totalPoints,
         typingStats: typingStats,
         // Question order: real (orderIndex). Student answer = display letter. Correct answer = as set in question (canonical letter).
-        questions: [...attempt.candidateAnswers]
-          .sort(
-            (a, b) =>
-              (a.question?.orderIndex ?? 0) - (b.question?.orderIndex ?? 0)
-          )
-          .map((answer, index) => {
-          const pointsEarned = isTypingInterview && answer.typingStats
-            ? typingPointsEarned(answer.typingStats, answer.question.points)
-            : (answer.isCorrect ? answer.question.points : 0);
+        questions: interview.questions.map((question, index) => {
+          const answer = attempt.candidateAnswers.find(
+            (ca) => ca.questionId === question.id
+          );
+          const answered =
+            answer?.answer != null && String(answer.answer).trim() !== "";
+          const pointsEarned = !answered
+            ? 0
+            : isTypingInterview && answer.typingStats
+              ? typingPointsEarned(answer.typingStats, question.points)
+              : answer.isCorrect
+                ? question.points
+                : 0;
           return {
             questionNumber: index + 1,
-            questionText: answer.question.questionText,
-            userAnswer: answer.answer,
-            candidateAnswer: answer.answer,
-            correctAnswer: answer.question.correctAnswer,
-            isCorrect: answer.isCorrect,
-            points: answer.question.points,
+            questionText: question.questionText,
+            options: question.options,
+            userAnswer: answer?.answer ?? "",
+            candidateAnswer: answer?.answer ?? "",
+            correctAnswer: resolveCorrectLetter(question),
+            unanswered: !answered,
+            isCorrect: answered ? Boolean(answer.isCorrect) : false,
+            points: question.points,
             pointsEarned,
-            typingStats: answer.typingStats,
+            typingStats: answer?.typingStats ?? null,
           };
         }),
       };
@@ -258,12 +263,14 @@ export async function GET(request, { params }) {
         const questionRows = result.questions
           .map((question) => {
             return [
-              question.questionText.replace(/<[^>]*>/g, ""), // Strip HTML tags
-              question.userAnswer || "",
+              question.questionText.replace(/<[^>]*>/g, ""),
+              formatOptionsLine(question.options),
+              question.unanswered ? "Not answered" : question.userAnswer || "",
               question.correctAnswer || "",
+              question.unanswered ? "No" : "Yes",
               question.points,
               question.pointsEarned,
-              question.isCorrect,
+              question.unanswered ? "No" : question.isCorrect,
             ];
           })
           .flat();

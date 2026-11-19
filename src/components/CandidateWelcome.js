@@ -8,18 +8,22 @@ import {
   FileText,
   Play,
   AlertCircle,
-  CheckCircle,
-  User,
   Timer,
   Phone,
   Mail,
   Key,
   LogOut,
   Loader2,
+  ChevronsDownUp,
+  ChevronsUpDown,
 } from "lucide-react";
 import { useMessages, MessageDisplay } from "./MessageSystem";
 import { format } from "date-fns";
-import { sanitizeHtml } from "../lib/sanitize";
+import { htmlToPlainText } from "../lib/sanitize";
+import RichTextDisplay from "./RichTextDisplay";
+import InstructionListDisplay from "./InstructionListDisplay";
+import QuestionOptionsPanel from "./QuestionOptionsPanel";
+import { useExpandableIds } from "../hooks/useExpandableIds";
 import { getSubmissionReasonLabel } from "../lib/submissionReasons";
 import { useServerTime } from "../hooks/useServerTime";
 import { useCandidateIdleLogout } from "../hooks/useCandidateIdleLogout";
@@ -35,6 +39,8 @@ export default function CandidateWelcome() {
   const [sessionValid, setSessionValid] = useState(true);
   const [interviewAttempts, setInterviewAttempts] = useState({});
   const [resultsPublished, setResultsPublished] = useState(false);
+  const [resultsShowAttempt, setResultsShowAttempt] = useState(false);
+  const [resultsShowCorrect, setResultsShowCorrect] = useState(false);
   const [attemptResults, setAttemptResults] = useState([]);
   const [attemptResultsLoading, setAttemptResultsLoading] = useState(false);
   const [isCheckingAttempts, setIsCheckingAttempts] = useState(false);
@@ -44,6 +50,10 @@ export default function CandidateWelcome() {
   const checkingAttemptsRef = useRef(false);
   const lastCheckTimeRef = useRef(0);
   const hasInitializedRef = useRef(false);
+  const attemptQuestionIds = (attemptResults || []).flatMap((attempt) =>
+    (attempt.questions || []).map((q) => `${attempt.sessionId}-${q.questionId}`)
+  );
+  const attemptOptionsExpand = useExpandableIds(attemptQuestionIds);
 
   useEffect(() => {
     // Check if candidate data exists in session
@@ -62,7 +72,11 @@ export default function CandidateWelcome() {
         parsedCandidate.enrollments &&
         parsedCandidate.enrollments.length > 0
       ) {
-        setCohort(parsedCandidate.enrollments[0].cohort);
+        const nextCohort = parsedCandidate.enrollments[0].cohort;
+        setCohort(nextCohort);
+        setResultsPublished(nextCohort?.resultsPublished === true);
+        setResultsShowAttempt(nextCohort?.resultsShowAttempt === true);
+        setResultsShowCorrect(nextCohort?.resultsShowCorrect === true);
       }
 
       // Session is already verified when accessing the page
@@ -302,7 +316,12 @@ export default function CandidateWelcome() {
 
       if (attempts.ok) {
         const result = await attempts.json();
-        return { attempts: result.attempts || {}, resultsPublished: result.resultsPublished === true };
+        return {
+          attempts: result.attempts || {},
+          resultsPublished: result.resultsPublished === true,
+          resultsShowAttempt: result.resultsShowAttempt === true,
+          resultsShowCorrect: result.resultsShowCorrect === true,
+        };
       }
     } catch (error) {
       console.error("Error checking interview attempts:", error);
@@ -310,7 +329,12 @@ export default function CandidateWelcome() {
       checkingAttemptsRef.current = false;
     }
 
-    return { attempts: {}, resultsPublished: false };
+    return {
+      attempts: {},
+      resultsPublished: false,
+      resultsShowAttempt: false,
+      resultsShowCorrect: false,
+    };
   }, [candidate, cohort]);
 
   // Check interview attempts when component loads
@@ -318,17 +342,26 @@ export default function CandidateWelcome() {
     if (candidate && cohort?.interviews && !hasInitializedRef.current) {
       hasInitializedRef.current = true;
       setIsCheckingAttempts(true);
-      checkInterviewAttempts().then(({ attempts, resultsPublished: rp }) => {
-        setInterviewAttempts(attempts ?? {});
-        setResultsPublished(rp);
-        setIsCheckingAttempts(false);
-      });
+      checkInterviewAttempts().then(
+        ({
+          attempts,
+          resultsPublished: rp,
+          resultsShowAttempt: ra,
+          resultsShowCorrect: rc,
+        }) => {
+          setInterviewAttempts(attempts ?? {});
+          setResultsPublished(rp);
+          setResultsShowAttempt(ra);
+          setResultsShowCorrect(rc);
+          setIsCheckingAttempts(false);
+        }
+      );
     }
   }, [candidate, cohort, checkInterviewAttempts]);
 
   // Fetch detailed attempt results when results are published and all completed
   useEffect(() => {
-    if (!candidate || !cohort?.interviews || !resultsPublished) return;
+    if (!candidate || !cohort?.interviews || !resultsPublished || !resultsShowAttempt) return;
     const allCompleted = cohort.interviews.every(
       (ci) => interviewAttempts?.[ci.interview?.id]?.status === "COMPLETED"
     );
@@ -355,16 +388,25 @@ export default function CandidateWelcome() {
         if (!cancelled) setAttemptResultsLoading(false);
       });
     return () => { cancelled = true; };
-  }, [candidate, cohort?.interviews, resultsPublished, interviewAttempts]);
+  }, [candidate, cohort?.interviews, resultsPublished, resultsShowAttempt, interviewAttempts]);
 
   // Refresh attempts when user returns to the page (after completing an interview)
   useEffect(() => {
+    const applyAttemptCheck = ({
+      attempts,
+      resultsPublished: rp,
+      resultsShowAttempt: ra,
+      resultsShowCorrect: rc,
+    }) => {
+      setInterviewAttempts(attempts ?? {});
+      setResultsPublished(rp);
+      setResultsShowAttempt(ra);
+      setResultsShowCorrect(rc);
+    };
+
     const handleFocus = () => {
       if (candidate && cohort?.interviews && hasInitializedRef.current) {
-        checkInterviewAttempts().then(({ attempts, resultsPublished: rp }) => {
-          setInterviewAttempts(attempts ?? {});
-          setResultsPublished(rp);
-        });
+        checkInterviewAttempts().then(applyAttemptCheck);
       }
     };
 
@@ -375,10 +417,7 @@ export default function CandidateWelcome() {
         cohort?.interviews &&
         hasInitializedRef.current
       ) {
-        checkInterviewAttempts().then(({ attempts, resultsPublished: rp }) => {
-          setInterviewAttempts(attempts ?? {});
-          setResultsPublished(rp);
-        });
+        checkInterviewAttempts().then(applyAttemptCheck);
       }
     };
 
@@ -440,366 +479,239 @@ export default function CandidateWelcome() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-gray-50 [&_a]:cursor-pointer [&_button:not(:disabled)]:cursor-pointer [&_summary]:cursor-pointer">
       <MessageDisplay />
 
-      <div className="flex-1 min-h-0 overflow-auto max-w-6xl mx-auto w-full px-4 py-8">
-        {/* Header with Logout */}
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Candidate Dashboard
-          </h1>
+      <div className="flex-1 min-h-0 overflow-auto max-w-6xl mx-auto w-full px-4 py-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">
+              {candidate.name}
+            </h1>
+            <p className="text-xs text-gray-500 flex flex-wrap gap-x-3 gap-y-0.5">
+              <span className="inline-flex items-center gap-1">
+                <Mail className="w-3 h-3" />
+                {candidate.email}
+              </span>
+              {candidate.phone ? (
+                <span className="inline-flex items-center gap-1">
+                  <Phone className="w-3 h-3" />
+                  {candidate.phone}
+                </span>
+              ) : null}
+              <span className="inline-flex items-center gap-1 font-mono">
+                <Key className="w-3 h-3" />
+                {candidate.accessKey}
+              </span>
+            </p>
+          </div>
           <button
             onClick={handleLogout}
-            className="flex items-center space-x-2 px-4 py-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50"
           >
             <LogOut className="w-4 h-4" />
-            <span>Logout</span>
+            Logout
           </button>
         </div>
 
-        {/* Candidate Information */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">
-            Your Information
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="flex items-center space-x-3">
-              <div className="p-3 bg-blue-100 rounded-lg">
-                <User className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-700">Name</p>
-                <p className="text-lg font-semibold text-gray-900">
-                  {candidate.name}
-                </p>
-              </div>
+        <div className="bg-white rounded-xl border border-gray-200 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-semibold text-gray-900">{cohort.name}</p>
+              <p className="text-xs text-gray-500 inline-flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5" />
+                {format(new Date(cohort.openTime), "PPp")} –{" "}
+                {format(new Date(cohort.closeTime), "PPp")}
+              </p>
             </div>
-
-            <div className="flex items-center space-x-3">
-              <div className="p-3 bg-green-100 rounded-lg">
-                <Mail className="w-6 h-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-700">Email</p>
-                <p className="text-lg font-semibold text-gray-900">
-                  {candidate.email}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-3">
-              <div className="p-3 bg-purple-100 rounded-lg">
-                <Phone className="w-6 h-6 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-700">Phone</p>
-                <p className="text-lg font-semibold text-gray-900">
-                  {candidate.phone || "Not provided"}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-3">
-              <div className="p-3 bg-orange-100 rounded-lg">
-                <Key className="w-6 h-6 text-orange-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-700">Access Key</p>
-                <p className="text-lg font-semibold text-gray-900 font-mono">
-                  {candidate.accessKey}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Cohort Information */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">
-            Cohort Details
-          </h2>
-
-          <div className="mb-6">
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              {cohort.name}
-            </h3>
-            {cohort.description && (
-              <div
-                className="text-gray-600 mb-4 prose prose-sm max-w-none"
-                dangerouslySetInnerHTML={{
-                  __html: sanitizeHtml(cohort.description),
-                }}
-              />
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <div className="flex items-center space-x-3">
-              <Calendar className="w-5 h-5 text-blue-600" />
-              <div>
-                <p className="text-sm font-medium text-gray-700">Start Time</p>
-                <p className="text-gray-900">
-                  {format(new Date(cohort.openTime), "PPP 'at' p")}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-3">
-              <Clock className="w-5 h-5 text-red-600" />
-              <div>
-                <p className="text-sm font-medium text-gray-700">End Time</p>
-                <p className="text-gray-900">
-                  {format(new Date(cohort.closeTime), "PPP 'at' p")}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Countdown Timer */}
-          {timeRemaining !== null && (
-            <div className="p-4 bg-blue-50 rounded-lg">
-              <div className="flex items-center justify-center space-x-2">
-                <Timer className="w-5 h-5 text-blue-600" />
-                <span className="text-blue-800 font-medium">
-                  {isCohortOpen
-                    ? "Interview in progress"
-                    : "Interview starts in:"}
+            {timeRemaining !== null && (
+              <div className="inline-flex items-center gap-2 rounded-lg bg-blue-50 border border-blue-100 px-3 py-1.5 text-sm">
+                <Timer className="w-4 h-4 text-blue-600" />
+                <span className="text-blue-800">
+                  {isCohortOpen ? "Time left" : "Starts in"}
                 </span>
-                <span className="text-2xl font-mono font-bold text-blue-900">
+                <span className="font-mono font-semibold text-blue-900">
                   {formatTimeRemaining(timeRemaining)}
                 </span>
               </div>
-            </div>
-          )}
-
-          <div className="mt-6 pt-6 border-t">
-            <h3 className="text-lg font-semibold text-gray-900 mb-3">
-              Cohort Instructions
-            </h3>
-            {cohort.instructions && (
-              <div
-                className="prose max-w-none text-gray-700 prose-sm mb-4"
-                dangerouslySetInnerHTML={{
-                  __html: sanitizeHtml(cohort.instructions),
-                }}
-              />
             )}
-            <p className="text-gray-700 text-sm font-medium bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-              Do not leave or close this page during an exam. If you switch tabs, close the browser, or leave the exam window, your attempt may be submitted automatically.
-            </p>
           </div>
+          {cohort.description ? (
+            <details className="mt-2 text-sm">
+              <summary className="cursor-pointer text-blue-700 hover:text-blue-900">
+                Cohort description
+              </summary>
+              <div className="mt-2 text-gray-600">
+                <RichTextDisplay html={cohort.description} />
+              </div>
+            </details>
+          ) : null}
         </div>
 
-        {/* Interviews */}
-        <div className="bg-white rounded-2xl shadow-xl p-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">
-            Available Interviews
-          </h2>
+        <InstructionListDisplay html={cohort.instructions} />
+
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-200">
+            <h2 className="text-base font-semibold text-gray-900">
+              Available interviews
+            </h2>
+          </div>
 
           {cohort.interviews && cohort.interviews.length > 0 ? (
-            <div className="space-y-4">
-              {cohort.interviews.map((cohortInterview) => {
-                const interview = cohortInterview.interview;
-                const baseStatus = getInterviewStatus(
-                  interview,
-                  cohort.interviews
-                );
-                const attemptStatus = interviewAttempts?.[interview.id]?.status;
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase">
+                  <tr>
+                    <th className="px-4 py-2">Interview</th>
+                    <th className="px-4 py-2">Duration</th>
+                    <th className="px-4 py-2 hidden sm:table-cell">Questions</th>
+                    <th className="px-4 py-2">Status</th>
+                    <th className="px-4 py-2 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {cohort.interviews.map((cohortInterview) => {
+                    const interview = cohortInterview.interview;
+                    const baseStatus = getInterviewStatus(
+                      interview,
+                      cohort.interviews
+                    );
+                    const attemptStatus = interviewAttempts?.[interview.id]?.status;
 
-                let status;
-                if (attemptStatus === "COMPLETED") {
-                  status = "attempted";
-                } else if (attemptStatus === "IN_PROGRESS") {
-                  status = "in_progress";
-                } else {
-                  // No attempt found - use base status (available, waiting, closed, locked)
-                  status = baseStatus;
-                }
+                    let status;
+                    if (attemptStatus === "COMPLETED") {
+                      status = "attempted";
+                    } else if (attemptStatus === "IN_PROGRESS") {
+                      status = "in_progress";
+                    } else {
+                      status = baseStatus;
+                    }
 
-                return (
-                  <div
-                    key={interview.id}
-                    className={`border rounded-lg p-6 ${
+                    const statusLabel =
                       status === "available"
-                        ? "border-green-200 bg-green-50"
+                        ? "Ready to start"
                         : status === "attempted"
-                        ? "border-blue-200 bg-blue-50"
-                        : status === "in_progress"
-                        ? "border-orange-200 bg-orange-50"
-                        : status === "waiting"
-                        ? "border-yellow-200 bg-yellow-50"
-                        : status === "locked"
-                        ? "border-gray-200 bg-gray-50"
-                        : "border-red-200 bg-red-50"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-3 mb-2">
-                          <h3 className="text-lg font-semibold text-gray-900">
-                            {interview.type} Assessment
-                          </h3>
-                          {status === "available" && (
-                            <CheckCircle className="w-5 h-5 text-green-600" />
-                          )}
-                          {status === "attempted" && (
-                            <CheckCircle className="w-5 h-5 text-blue-600" />
-                          )}
-                          {status === "in_progress" && (
-                            <Clock className="w-5 h-5 text-orange-600" />
-                          )}
-                          {status === "waiting" && (
-                            <Clock className="w-5 h-5 text-yellow-600" />
-                          )}
-                          {status === "locked" && (
-                            <AlertCircle className="w-5 h-5 text-gray-600" />
-                          )}
-                          {status === "closed" && (
-                            <AlertCircle className="w-5 h-5 text-red-600" />
-                          )}
-                        </div>
+                          ? "Submitted"
+                          : status === "in_progress"
+                            ? "In progress"
+                            : status === "waiting"
+                              ? "Waiting to open"
+                              : status === "locked"
+                                ? "Complete aptitude first"
+                                : "Closed";
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600 mb-4">
-                          <div className="flex items-center space-x-2">
-                            <Clock className="w-4 h-4" />
-                            <span>{interview.durationMinutes} minutes</span>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <FileText className="w-4 h-4" />
-                            <span>{interview.totalQuestions} questions</span>
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="font-medium">
-                              {status === "available" && "Ready to start"}
-                              {status === "attempted" && "Submitted"}
-                              {status === "in_progress" && "In progress"}
-                              {status === "waiting" &&
-                                "Waiting for cohort to open"}
-                              {status === "locked" &&
-                                "Complete aptitude test first"}
-                              {status === "closed" && "Interview closed"}
-                            </span>
-                            {status === "attempted" &&
-                              interviewAttempts?.[interview.id]?.submissionReason && (
-                              <span className="text-xs text-gray-500 mt-0.5">
+                    return (
+                      <tr key={interview.id} className="align-top">
+                        <td className="px-4 py-2.5">
+                          <p className="font-medium text-gray-900">
+                            {interview.type} Assessment
+                          </p>
+                          {interview.instructions ? (
+                            <details className="mt-1">
+                              <summary className="cursor-pointer text-xs text-blue-700">
+                                Instructions
+                              </summary>
+                              <RichTextDisplay
+                                html={interview.instructions}
+                                className="text-xs text-gray-600 mt-1"
+                              />
+                            </details>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">
+                          {interview.durationMinutes} min
+                        </td>
+                        <td className="px-4 py-2.5 text-gray-600 hidden sm:table-cell">
+                          {interview.totalQuestions}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span
+                            className={`inline-flex items-center gap-1 text-xs font-medium ${
+                              status === "available"
+                                ? "text-green-700"
+                                : status === "attempted"
+                                  ? "text-blue-700"
+                                  : status === "in_progress"
+                                    ? "text-orange-700"
+                                    : status === "waiting"
+                                      ? "text-amber-700"
+                                      : "text-gray-600"
+                            }`}
+                          >
+                            {statusLabel}
+                          </span>
+                          {status === "attempted" &&
+                            interviewAttempts?.[interview.id]?.submissionReason && (
+                              <p className="text-xs text-gray-500">
                                 {getSubmissionReasonLabel(
                                   interviewAttempts?.[interview.id].submissionReason
                                 )}
-                              </span>
+                              </p>
                             )}
-                            {status === "attempted" &&
-                              resultsPublished &&
-                              interviewAttempts?.[interview.id]?.score != null && (
-                              <span className="text-sm font-semibold text-blue-700 mt-1 block">
+                          {status === "attempted" &&
+                            resultsPublished &&
+                            interviewAttempts?.[interview.id]?.score != null && (
+                              <p className="text-xs font-semibold text-blue-700">
                                 Score: {interviewAttempts?.[interview.id].score}
-                                {interview.totalQuestions > 0 && (
-                                  <span className="text-gray-600 font-normal">
-                                    {" "}/ {interview.totalQuestions}
-                                  </span>
-                                )}
-                              </span>
+                                {interview.totalQuestions > 0
+                                  ? `/${interview.totalQuestions}`
+                                  : ""}
+                              </p>
                             )}
-                          </div>
-                        </div>
-
-                        {interview.instructions && (
-                          <div className="mb-4">
-                            <h4 className="text-sm font-medium text-gray-700 mb-2">
-                              Instructions:
-                            </h4>
-                            <div
-                              className="text-sm text-gray-600 prose prose-sm max-w-none"
-                              dangerouslySetInnerHTML={{
-                                __html: sanitizeHtml(interview.instructions),
-                              }}
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="ml-6">
-                        {status === "available" ? (
-                          <button
-                            onClick={() => handleStartInterview(interview)}
-                            disabled={startingInterviewId === interview.id}
-                            className="flex items-center space-x-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {startingInterviewId === interview.id ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Play className="w-4 h-4" />
-                            )}
-                            <span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                          {status === "available" ? (
+                            <button
+                              onClick={() => handleStartInterview(interview)}
+                              disabled={startingInterviewId === interview.id}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
+                            >
+                              {startingInterviewId === interview.id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Play className="w-4 h-4" />
+                              )}
                               {startingInterviewId === interview.id
                                 ? "Starting..."
-                                : "Start Interview"}
-                            </span>
-                          </button>
-                        ) : status === "attempted" ? (
-                          <button
-                            disabled
-                            className="flex items-center space-x-2 px-6 py-3 bg-blue-400 text-white rounded-lg cursor-not-allowed"
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                            <span>Submitted</span>
-                          </button>
-                        ) : status === "in_progress" ? (
-                          <button
-                            onClick={() => handleStartInterview(interview)}
-                            disabled={startingInterviewId === interview.id}
-                            className="flex items-center space-x-2 px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {startingInterviewId === interview.id ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Clock className="w-4 h-4" />
-                            )}
-                            <span>
+                                : "Start"}
+                            </button>
+                          ) : status === "in_progress" ? (
+                            <button
+                              onClick={() => handleStartInterview(interview)}
+                              disabled={startingInterviewId === interview.id}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 text-white rounded-lg text-sm hover:bg-orange-700 disabled:opacity-50"
+                            >
+                              {startingInterviewId === interview.id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Clock className="w-4 h-4" />
+                              )}
                               {startingInterviewId === interview.id
                                 ? "Resuming..."
-                                : "Continue Interview"}
+                                : "Continue"}
+                            </button>
+                          ) : (
+                            <span className="text-xs text-gray-500">
+                              {status === "attempted"
+                                ? "Submitted"
+                                : status === "waiting"
+                                  ? "Waiting"
+                                  : status === "locked"
+                                    ? "Locked"
+                                    : "Closed"}
                             </span>
-                          </button>
-                        ) : status === "waiting" ? (
-                          <button
-                            disabled
-                            className="flex items-center space-x-2 px-6 py-3 bg-gray-400 text-white rounded-lg cursor-not-allowed"
-                          >
-                            <Clock className="w-4 h-4" />
-                            <span>Waiting</span>
-                          </button>
-                        ) : status === "locked" ? (
-                          <button
-                            disabled
-                            className="flex items-center space-x-2 px-6 py-3 bg-gray-400 text-white rounded-lg cursor-not-allowed"
-                          >
-                            <AlertCircle className="w-4 h-4" />
-                            <span>Locked</span>
-                          </button>
-                        ) : (
-                          <button
-                            disabled
-                            className="flex items-center space-x-2 px-6 py-3 bg-red-400 text-white rounded-lg cursor-not-allowed"
-                          >
-                            <AlertCircle className="w-4 h-4" />
-                            <span>Closed</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           ) : (
             <div className="text-center py-8">
-              <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                No interviews available
-              </h3>
-              <p className="text-gray-600">
+              <FileText className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+              <p className="text-gray-600 text-sm">
                 There are no interviews assigned to this cohort yet.
               </p>
             </div>
@@ -812,19 +724,17 @@ export default function CandidateWelcome() {
             cohort.interviews.every(
               (ci) => interviewAttempts?.[ci.interview?.id]?.status === "COMPLETED"
             ) && (
-              <div className="mt-8 p-6 bg-green-50 border border-green-200 rounded-xl">
-                <div className="text-center">
-                  <CheckCircle className="w-16 h-16 text-green-600 mx-auto mb-4" />
-                  <h3 className="text-xl font-semibold text-green-900 mb-2">
-                    All Interviews Completed!
+              <div className="m-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div>
+                  <h3 className="text-sm font-semibold text-green-900 mb-1">
+                    All interviews completed
                   </h3>
-                  <p className="text-green-800 mb-4">
-                    You have successfully completed all interviews in this
-                    cohort.
+                  <p className="text-green-800 text-sm mb-2">
+                    You have finished every interview in this cohort.
                   </p>
                   {resultsPublished ? (
                     <>
-                      <div className="mb-4 text-left max-w-md mx-auto">
+                      <div className="mb-2 text-left">
                         <h4 className="text-sm font-semibold text-green-900 mb-2">Your results</h4>
                         <ul className="space-y-1 text-sm text-green-800">
                           {cohort.interviews.map((ci) => {
@@ -833,7 +743,7 @@ export default function CandidateWelcome() {
                               <li key={ci.interview.id} className="flex justify-between">
                                 <span>{ci.interview.type}</span>
                                 <span className="font-medium">
-                                  {att?.score != null ? `${att.score} / ${ci.interview.totalQuestions || "—"}` : "—"}
+                                  {att?.score != null ? `${att.score}/${ci.interview.totalQuestions || "—"}` : "—"}
                                 </span>
                               </li>
                             );
@@ -855,8 +765,8 @@ export default function CandidateWelcome() {
               </div>
             )}
 
-          {/* Detailed result cards per interview (when results published) */}
-          {resultsPublished &&
+          {/* Detailed result cards per interview (when attempt details are published) */}
+          {resultsPublished && resultsShowAttempt &&
             cohort.interviews &&
             cohort.interviews.length > 0 &&
             cohort.interviews.every(
@@ -897,7 +807,9 @@ export default function CandidateWelcome() {
                               {ts.charactersTyped != null && <span>Characters: {ts.charactersTyped}</span>}
                             </>
                           ) : (
-                            <span>Total marks: {attempt.score} / {attempt.totalQuestions}</span>
+                            <span>
+                              Total marks: {attempt.score}/{attempt.totalPoints || attempt.totalQuestions}
+                            </span>
                           )}
                         </div>
                         {attempt.submissionReason && (
@@ -907,7 +819,21 @@ export default function CandidateWelcome() {
                         )}
                       </div>
 
-                      <h4 className="text-xs font-semibold text-gray-700 mb-2">Questions and your answers</h4>
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-xs font-semibold text-gray-700">Questions and your answers</h4>
+                        <button
+                          type="button"
+                          onClick={attemptOptionsExpand.toggleAll}
+                          className="inline-flex items-center gap-1 text-xs text-blue-700 hover:text-blue-900 cursor-pointer"
+                        >
+                          {attemptOptionsExpand.allExpanded ? (
+                            <ChevronsDownUp className="w-3.5 h-3.5" />
+                          ) : (
+                            <ChevronsUpDown className="w-3.5 h-3.5" />
+                          )}
+                          {attemptOptionsExpand.allExpanded ? "Collapse all options" : "Expand all options"}
+                        </button>
+                      </div>
                       <div className="max-h-80 overflow-y-auto rounded border border-gray-200 overflow-hidden">
                         <table className="w-full text-xs border-collapse">
                           <thead>
@@ -920,19 +846,28 @@ export default function CandidateWelcome() {
                           <tbody>
                             {attempt.questions
                               .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
-                              .map((q, idx) => (
+                              .map((q, idx) => {
+                                const qKey = `${attempt.sessionId}-${q.questionId}`;
+                                return (
                                 <tr key={q.questionId} className="border-b border-gray-100 hover:bg-gray-50/50">
                                   <td className="py-2 px-3 text-gray-600 font-medium align-top">{idx + 1}</td>
                                   <td className="py-2 px-3 text-gray-800 align-top">
-                                    <div
-                                      className="prose prose-sm max-w-none"
-                                      dangerouslySetInnerHTML={{
-                                        __html: sanitizeHtml(q.questionText || ""),
-                                      }}
+                                    <RichTextDisplay html={q.questionText || ""} />
+                                    <QuestionOptionsPanel
+                                      options={q.options}
+                                      candidateAnswer={q.unanswered ? "" : q.yourAnswer}
+                                      correctAnswer={q.correctAnswer}
+                                      showCorrect={resultsShowCorrect}
+                                      expanded={attemptOptionsExpand.isExpanded(qKey)}
+                                      onToggle={() => attemptOptionsExpand.toggle(qKey)}
                                     />
                                   </td>
                                   <td className="py-2 px-3 text-gray-700 align-top">
-                                    {q.questionType === "TYPING" && q.typingStats ? (
+                                    {q.unanswered ? (
+                                      <span className="inline-flex px-2 py-0.5 rounded bg-gray-100 text-gray-700">
+                                        Not answered
+                                      </span>
+                                    ) : q.questionType === "TYPING" && q.typingStats ? (
                                       <div>
                                         <p className="whitespace-pre-wrap break-words">{q.yourAnswer || "(no text)"}</p>
                                         <p className="text-gray-500 mt-1">
@@ -941,15 +876,27 @@ export default function CandidateWelcome() {
                                         </p>
                                       </div>
                                     ) : (
-                                      <div
-                                        dangerouslySetInnerHTML={{
-                                          __html: sanitizeHtml(String(q.yourAnswer ?? "") || "—"),
-                                        }}
-                                      />
+                                      <span className="whitespace-pre-wrap break-words">
+                                        {q.yourAnswerText ||
+                                          htmlToPlainText(String(q.yourAnswer ?? "")) ||
+                                          "—"}
+                                        {resultsShowCorrect && !q.unanswered ? (
+                                          <span
+                                            className={`ml-2 inline-flex px-2 py-0.5 rounded ${
+                                              q.isCorrect
+                                                ? "bg-green-100 text-green-800"
+                                                : "bg-red-100 text-red-800"
+                                            }`}
+                                          >
+                                            {q.isCorrect ? "Correct" : "Incorrect"}
+                                          </span>
+                                        ) : null}
+                                      </span>
                                     )}
                                   </td>
                                 </tr>
-                              ))}
+                                );
+                              })}
                           </tbody>
                         </table>
                       </div>

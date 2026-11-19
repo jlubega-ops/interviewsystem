@@ -4,6 +4,9 @@ import {
   calculateTimeRemaining,
   logTimeValidation,
 } from "../../../../lib/timeValidation";
+import { questionsForCandidate, requireEnrollment } from "../../../../lib/candidateAuth";
+import { getInterviewWithQuestions } from "../../../../lib/cachedReads";
+import { applyAttemptShuffle } from "../../../../lib/attemptShuffle";
 
 export const runtime = "nodejs";
 
@@ -24,6 +27,9 @@ export async function POST(request) {
         { status: 400 }
       );
     }
+
+    const owned = await requireEnrollment({ candidateId, accessKey });
+    if (owned.error) return owned.error;
 
     // First, let's check what attempts exist for this accessKey and interviewId
     const allAttempts = await prisma.candidateSession.findMany({
@@ -54,16 +60,8 @@ export async function POST(request) {
         interviewId: interviewId,
         status: "IN_PROGRESS",
       },
-      include: {
-        interview: {
-          include: {
-            questions: {
-              orderBy: { orderIndex: "asc" },
-            },
-          },
-        },
-      },
     });
+    const interview = attempt ? await getInterviewWithQuestions(attempt.interviewId) : null;
 
     console.log("Resume attempt check:", {
       accessKey,
@@ -85,9 +83,16 @@ export async function POST(request) {
     }
 
     // Check if attempt is expired using server time
+    if (!interview) {
+      return NextResponse.json(
+        { success: false, error: "Interview not found" },
+        { status: 404 }
+      );
+    }
+
     const timeData = calculateTimeRemaining(
       attempt.startedAt,
-      attempt.interview.durationMinutes
+      interview.durationMinutes
     );
 
     // Log for security monitoring
@@ -119,13 +124,12 @@ export async function POST(request) {
       select: { questionId: true, answer: true },
     });
 
-    // Questions and options in original order (no shuffle).
-    const finalQuestions = attempt.interview.questions.map((q) => ({
-      ...q,
-      options: q.options ? JSON.parse(JSON.stringify(q.options)) : [],
-    }));
+    const finalQuestions = applyAttemptShuffle(
+      interview.questions,
+      attempt.shuffleLayout
+    );
 
-    // Build answers: use stored option.letter; legacy A–D by position = options[idx].letter.
+    // Answers are stored as the option identity (canonical letter), not the on-screen A/B/C/D.
     const answers = {};
     existingAnswers.forEach((entry) => {
       const raw = (entry.answer || "").toString().trim();
@@ -135,7 +139,17 @@ export async function POST(request) {
         answers[entry.questionId] = raw;
         return;
       }
-      if (/^[A-D]$/i.test(upper)) {
+      const byLetter = question.options.find(
+        (opt) =>
+          opt &&
+          typeof opt.letter === "string" &&
+          opt.letter.trim().toUpperCase() === upper
+      );
+      if (byLetter) {
+        answers[entry.questionId] = byLetter.letter.trim().toUpperCase();
+        return;
+      }
+      if (!attempt.shuffleLayout && /^[A-D]$/i.test(upper)) {
         const idx = upper.charCodeAt(0) - 65;
         const opt = question.options[idx];
         if (opt && typeof opt.letter === "string" && opt.letter.trim() !== "") {
@@ -143,22 +157,14 @@ export async function POST(request) {
           return;
         }
       }
-      const byLetter = question.options.find(
-        (opt) =>
-          opt &&
-          typeof opt.letter === "string" &&
-          opt.letter.trim().toUpperCase() === upper
-      );
-      answers[entry.questionId] = byLetter
-        ? byLetter.letter.trim().toUpperCase()
-        : raw;
+      answers[entry.questionId] = raw;
     });
 
     return NextResponse.json({
       success: true,
       attemptId: attempt.id,
-      questions: finalQuestions,
-      durationMinutes: attempt.interview.durationMinutes,
+      questions: questionsForCandidate(finalQuestions),
+      durationMinutes: interview.durationMinutes,
       startedAt: attempt.startedAt,
       timeRemaining: timeData.timeRemaining,
       answers: answers,

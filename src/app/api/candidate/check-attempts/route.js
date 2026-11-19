@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
+import { requireEnrollment } from "../../../../lib/candidateAuth";
+import { readCohortResultFlags } from "../../../../lib/resultsPublish";
 
 export const runtime = "nodejs";
 
@@ -35,25 +37,22 @@ export async function POST(request) {
       );
     }
 
-    // Find cohort so we can check if results are published (candidates only see scores when published)
-    let resultsPublished = false;
+    const owned = await requireEnrollment({ candidateId, accessKey });
+    if (owned.error) return owned.error;
+
+    let resultFlags = {
+      resultsPublished: false,
+      resultsShowAttempt: false,
+      resultsShowCorrect: false,
+    };
     const enrollment = await prisma.cohortEnrollment.findFirst({
       where: { accessKey },
       select: { cohortId: true },
     });
     if (enrollment) {
-      try {
-        const rows = await prisma.$queryRawUnsafe(
-          "SELECT results_published FROM cohorts WHERE id = ? LIMIT 1",
-          enrollment.cohortId
-        );
-        const row = rows?.[0];
-        if (row) {
-          const val = row.results_published ?? row.Results_Published;
-          resultsPublished = typeof val === "number" ? val !== 0 : Boolean(val);
-        }
-      } catch (_) {}
+      resultFlags = await readCohortResultFlags(prisma, enrollment.cohortId);
     }
+    const resultsPublished = resultFlags.resultsPublished;
 
     // Find all attempts for this candidate and access key (completed, in progress)
     const attempts = await prisma.candidateSession.findMany({
@@ -86,7 +85,7 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       attempts: attemptsMap,
-      resultsPublished,
+      ...resultFlags,
     });
   } catch (error) {
     console.error("Error checking interview attempts:", error);

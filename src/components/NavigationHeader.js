@@ -13,7 +13,10 @@ import {
   FolderOpen,
   Settings,
   ChevronDown,
+  Menu,
+  Building2,
 } from "lucide-react";
+import { useAdminNav } from "./AdminShell";
 
 // Icon mapping for string-based icon selection
 const iconMap = {
@@ -26,6 +29,7 @@ const iconMap = {
   ArrowLeft,
   LogOut,
   LogIn,
+  Building2,
 };
 import Link from "next/link";
 import ConfirmationDialog from "./ConfirmationDialog";
@@ -52,6 +56,7 @@ export default function NavigationHeader({
   className = "",
 }) {
   const Icon = typeof icon === "string" ? iconMap[icon] : icon;
+  const adminNav = useAdminNav();
   const [currentUser, setCurrentUser] = useState(null);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
@@ -109,11 +114,21 @@ export default function NavigationHeader({
   return (
     <>
       <header
-        className={`sticky top-0 z-50 flex-shrink-0 bg-white/80 backdrop-blur-sm border-b border-gray-200 ${className}`}
+        className={`sticky top-0 z-30 flex-shrink-0 bg-white/80 backdrop-blur-sm border-b border-gray-200 ${className}`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
+          <div className="flex justify-between items-center py-3">
             <div className="flex items-center space-x-4">
+              {adminNav ? (
+                <button
+                  type="button"
+                  className="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100"
+                  onClick={() => adminNav.setMobileOpen(true)}
+                  aria-label="Open sidebar"
+                >
+                  <Menu className="w-5 h-5" />
+                </button>
+              ) : null}
               {/* Icon */}
               {Icon && (
                 <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl flex items-center justify-center">
@@ -168,51 +183,6 @@ export default function NavigationHeader({
 
             {/* Actions */}
             <div className="flex items-center space-x-2 sm:space-x-4">
-              {/* Login - available on all admin pages so users can always reach the login page */}
-              <Link
-                href="/admin/login"
-                className="flex items-center space-x-1.5 text-gray-600 hover:text-gray-900 transition-colors px-2 py-2 rounded-lg hover:bg-gray-100"
-                title="Login"
-              >
-                <LogIn className="w-4 h-4 flex-shrink-0" />
-                <span className="hidden sm:inline text-sm font-medium">Login</span>
-              </Link>
-              {/* Dashboard - always visible on all admin pages */}
-              <Link
-                href="/admin/dashboard"
-                className="flex items-center space-x-1.5 text-gray-600 hover:text-gray-900 transition-colors px-2 py-2 rounded-lg hover:bg-gray-100"
-                title="Dashboard"
-              >
-                <Home className="w-4 h-4 flex-shrink-0" />
-                <span className="hidden sm:inline text-sm font-medium">Dashboard</span>
-              </Link>
-              {/* Quick Navigation - Cohorts, Users (Users only for Admin/Superadmin) */}
-              <div className="hidden md:flex items-center space-x-2">
-                <Link
-                  href="/admin/cohorts"
-                  className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors px-3 py-2 rounded-lg hover:bg-gray-100"
-                  title="Cohorts"
-                >
-                  <BookOpen className="w-4 h-4" />
-                </Link>
-                <Link
-                  href="/admin/question-banks"
-                  className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors px-3 py-2 rounded-lg hover:bg-gray-100"
-                  title="Question Banks"
-                >
-                  <FolderOpen className="w-4 h-4" />
-                </Link>
-                {(currentUser?.role === "SUPERADMIN" || currentUser?.role === "ADMIN") && (
-                  <Link
-                    href="/admin/users"
-                    className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors px-3 py-2 rounded-lg hover:bg-gray-100"
-                    title="Users"
-                  >
-                    <Users className="w-4 h-4" />
-                  </Link>
-                )}
-              </div>
-
               {/* Profile dropdown */}
               {showLogout && (
                 <div className="relative" ref={dropdownRef}>

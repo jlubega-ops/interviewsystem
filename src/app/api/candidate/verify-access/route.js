@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
 import candidateSessionManager from "../../../../lib/candidateSession";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../../lib/activityLog.js";
+import { getEnrollmentByAccessKey } from "../../../../lib/cachedReads";
+import { readCohortResultFlags } from "../../../../lib/resultsPublish";
 
 export const runtime = "nodejs";
 
@@ -18,30 +20,7 @@ export async function POST(request) {
     }
 
     // Find candidate by access key (any enrollment status so we can return clear messages)
-    const enrollment = await prisma.cohortEnrollment.findFirst({
-      where: { accessKey: accessKey },
-      include: {
-        candidate: true,
-        cohort: {
-          include: {
-            interviews: {
-              include: {
-                interview: {
-                  select: {
-                    id: true,
-                    type: true,
-                    durationMinutes: true,
-                    instructions: true,
-                    totalQuestions: true,
-                    isActive: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
+    const enrollment = await getEnrollmentByAccessKey(accessKey);
 
     if (!enrollment) {
       return NextResponse.json(
@@ -207,20 +186,8 @@ export async function POST(request) {
       userAgent: request.headers.get("user-agent")?.substring(0, 500) ?? null,
     });
 
-    // Include resultsPublished on cohort so candidate UI can show/hide results
-    let resultsPublished = enrollment.cohort?.resultsPublished === true;
-    try {
-      const rpRows = await prisma.$queryRawUnsafe(
-        "SELECT results_published FROM cohorts WHERE id = ? LIMIT 1",
-        enrollment.cohort.id
-      );
-      const rpRow = rpRows?.[0];
-      if (rpRow && (rpRow.results_published !== undefined || rpRow.Results_Published !== undefined)) {
-        const val = rpRow.results_published ?? rpRow.Results_Published;
-        resultsPublished = typeof val === "number" ? val !== 0 : Boolean(val);
-      }
-    } catch (_) {}
-    const cohortForCandidate = { ...enrollment.cohort, resultsPublished };
+    const resultFlags = await readCohortResultFlags(prisma, enrollment.cohort.id);
+    const cohortForCandidate = { ...enrollment.cohort, ...resultFlags };
 
     return NextResponse.json({
       success: true,

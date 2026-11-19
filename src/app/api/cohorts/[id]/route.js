@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../../lib/activityLog.js";
+import { requireApiUser } from "../../../../lib/apiAuth";
+import { invalidateCohort } from "../../../../lib/cachedReads";
+import { assertOrganisationName } from "../../../../lib/organisations";
+import { sanitizeHtml } from "../../../../lib/sanitize";
+import {
+  cascadeResultsFlags,
+  readCohortResultFlags,
+  writeCohortResultFlags,
+} from "../../../../lib/resultsPublish";
 
 // Use Node.js runtime instead of Edge Runtime
 export const runtime = "nodejs";
@@ -8,14 +17,10 @@ export const runtime = "nodejs";
 // GET /api/cohorts/[id] - Fetch a specific cohort (examiner: only if assigned)
 export async function GET(request, { params }) {
   try {
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-    if (!userId || !userRole) {
-      return NextResponse.json(
-        { success: false, error: "Authentication required" },
-        { status: 401 }
-      );
-    }
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
     const { id } = await params;
     const cohortId = id;
 
@@ -109,28 +114,25 @@ export async function GET(request, { params }) {
       }
     }
 
-    // Ensure isPublished and resultsPublished are always read from DB
+    // Ensure isPublished and results flags are always read from DB
     let isPublished = cohort.isPublished;
-    let resultsPublished = cohort.resultsPublished;
+    const resultFlags = await readCohortResultFlags(prisma, cohortId);
     try {
       const rows = await prisma.$queryRawUnsafe(
-        "SELECT is_published, results_published FROM cohorts WHERE id = ? LIMIT 1",
+        "SELECT is_published FROM cohorts WHERE id = ? LIMIT 1",
         cohortId
       );
       const row = rows?.[0];
       if (row) {
-        let val = row.is_published ?? row.Is_Published;
+        const val = row.is_published ?? row.Is_Published;
         if (typeof val === "number") isPublished = val !== 0;
         else if (typeof val === "boolean") isPublished = val;
-        val = row.results_published ?? row.Results_Published;
-        if (typeof val === "number") resultsPublished = val !== 0;
-        else if (typeof val === "boolean") resultsPublished = val;
       }
     } catch (_) {}
     const transformedCohort = {
       ...cohort,
       isPublished,
-      resultsPublished,
+      ...resultFlags,
       enrollmentCount: cohort.enrollments?.length ?? 0,
       interviewCount: cohort.interviews?.length ?? 0,
       examinerCount: cohort.examiners?.length ?? 0,
@@ -169,18 +171,14 @@ export async function GET(request, { params }) {
 // PUT /api/cohorts/[id] - Update a cohort (examiner: only if assigned)
 export async function PUT(request, { params }) {
   try {
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-    if (!userId || !userRole) {
-      return NextResponse.json(
-        { success: false, error: "Authentication required" },
-        { status: 401 }
-      );
-    }
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
     const { id } = await params;
     const cohortId = id;
     const body = await request.json();
-    const { name, description, instructions, openTime, closeTime, organisation, isPublished, resultsPublished } = body;
+    const { name, description, instructions, openTime, closeTime, organisation, isPublished, resultsPublished, resultsShowAttempt, resultsShowCorrect } = body;
 
     if (!cohortId) {
       return NextResponse.json(
@@ -243,12 +241,23 @@ export async function PUT(request, { params }) {
 
     const updateData = {
       name,
-      description: description || null,
-      instructions: instructions || null,
+      description: description ? sanitizeHtml(description) : null,
+      instructions: instructions ? sanitizeHtml(instructions) : null,
       openTime: openDate,
       closeTime: closeDate,
     };
-    if (organisation !== undefined) updateData.organisation = organisation ? String(organisation).trim() : null;
+    if (organisation !== undefined) {
+      const orgCheck = await assertOrganisationName(organisation, {
+        required: false,
+      });
+      if (orgCheck.error) {
+        return NextResponse.json(
+          { success: false, error: orgCheck.error },
+          { status: 400 }
+        );
+      }
+      updateData.organisation = orgCheck.name;
+    }
     const updatedCohort = await prisma.cohort.update({
       where: { id: cohortId },
       data: updateData,
@@ -273,11 +282,20 @@ export async function PUT(request, { params }) {
         cohortId
       );
     }
-    if (typeof resultsPublished === "boolean") {
-      await prisma.$executeRawUnsafe(
-        "UPDATE cohorts SET results_published = ? WHERE id = ?",
-        resultsPublished ? 1 : 0,
-        cohortId
+    let resultFlags;
+    if (
+      typeof resultsPublished === "boolean" ||
+      typeof resultsShowAttempt === "boolean" ||
+      typeof resultsShowCorrect === "boolean"
+    ) {
+      resultFlags = await writeCohortResultFlags(
+        prisma,
+        cohortId,
+        cascadeResultsFlags({
+          showScore: resultsPublished === true,
+          showAttempt: resultsShowAttempt === true,
+          showCorrect: resultsShowCorrect === true,
+        })
       );
     }
 
@@ -287,7 +305,9 @@ export async function PUT(request, { params }) {
       interviewCount: updatedCohort.interviews?.length ?? 0,
     };
     if (typeof isPublished === "boolean") cohortResponse.isPublished = isPublished;
-    if (typeof resultsPublished === "boolean") cohortResponse.resultsPublished = resultsPublished;
+    if (resultFlags) Object.assign(cohortResponse, resultFlags);
+
+    invalidateCohort(cohortId);
 
     return NextResponse.json({
       success: true,
@@ -307,14 +327,10 @@ export async function PUT(request, { params }) {
 // PATCH /api/cohorts/[id] - Update only publish status (for quick toggle on view page)
 export async function PATCH(request, { params }) {
   try {
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-    if (!userId || !userRole) {
-      return NextResponse.json(
-        { success: false, error: "Authentication required" },
-        { status: 401 }
-      );
-    }
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
     const { id } = await params;
     const cohortId = id;
     if (!cohortId) {
@@ -325,10 +341,16 @@ export async function PATCH(request, { params }) {
     }
     const body = await request.json().catch(() => ({}));
     const isPublished = body.isPublished;
-    const resultsPublished = body.resultsPublished;
-    if (typeof isPublished !== "boolean" && typeof resultsPublished !== "boolean") {
+    const hasResultsPayload =
+      typeof body.resultsPublished === "boolean" ||
+      typeof body.resultsShowAttempt === "boolean" ||
+      typeof body.resultsShowCorrect === "boolean" ||
+      typeof body.showScore === "boolean" ||
+      typeof body.showAttempt === "boolean" ||
+      typeof body.showCorrect === "boolean";
+    if (typeof isPublished !== "boolean" && !hasResultsPayload) {
       return NextResponse.json(
-        { success: false, error: "isPublished or resultsPublished (boolean) is required" },
+        { success: false, error: "isPublished or results publish options are required" },
         { status: 400 }
       );
     }
@@ -363,21 +385,37 @@ export async function PATCH(request, { params }) {
         cohortId
       );
     }
-    if (typeof resultsPublished === "boolean") {
-      await prisma.$executeRawUnsafe(
-        "UPDATE cohorts SET results_published = ? WHERE id = ?",
-        resultsPublished ? 1 : 0,
-        cohortId
+    let resultFlags;
+    if (hasResultsPayload) {
+      resultFlags = await writeCohortResultFlags(
+        prisma,
+        cohortId,
+        cascadeResultsFlags({
+          showScore:
+            body.showScore === true || body.resultsPublished === true,
+          showAttempt:
+            body.showAttempt === true || body.resultsShowAttempt === true,
+          showCorrect:
+            body.showCorrect === true || body.resultsShowCorrect === true,
+        })
       );
     }
 
     const message = [];
     if (typeof isPublished === "boolean") message.push(isPublished ? "Cohort published." : "Cohort unpublished.");
-    if (typeof resultsPublished === "boolean") message.push(resultsPublished ? "Results published." : "Results unpublished.");
+    if (resultFlags) {
+      message.push(
+        resultFlags.resultsPublished
+          ? "Results published."
+          : "Results unpublished."
+      );
+    }
+    invalidateCohort(cohortId);
+
     return NextResponse.json({
       success: true,
       isPublished: typeof isPublished === "boolean" ? isPublished : undefined,
-      resultsPublished: typeof resultsPublished === "boolean" ? resultsPublished : undefined,
+      ...(resultFlags || {}),
       message: message.join(" ") || "Updated.",
     });
   } catch (error) {
@@ -393,14 +431,10 @@ export async function PATCH(request, { params }) {
 // DELETE /api/cohorts/[id] - Delete cohort (admin: any; examiner: only if they created the cohort)
 export async function DELETE(request, { params }) {
   try {
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-    if (!userId || !userRole) {
-      return NextResponse.json(
-        { success: false, error: "Authentication required" },
-        { status: 401 }
-      );
-    }
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
     const { id } = await params;
     const cohortId = id;
 
@@ -473,6 +507,8 @@ export async function DELETE(request, { params }) {
       description: `Deleted cohort "${cohortName}"`,
       ...getRequestMeta(request),
     });
+
+    invalidateCohort(cohortId);
 
     return NextResponse.json({
       success: true,

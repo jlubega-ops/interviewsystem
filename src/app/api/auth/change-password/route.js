@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../../lib/apiAuth";
 import { prisma } from "../../../../lib/prisma";
 import bcrypt from "bcryptjs";
 
@@ -7,12 +8,11 @@ export const runtime = "nodejs";
 // POST /api/auth/change-password - Change password for logged-in user
 export async function POST(request) {
   try {
-    const userRole = request.headers.get("x-user-role");
-    const userId = request.headers.get("x-user-id");
-
-    if (!["SUPERADMIN", "ADMIN", "EXAMINER"].includes(userRole)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
+    const auth = await requireApiUser(request, {
+      roles: ["SUPERADMIN", "ADMIN", "EXAMINER"],
+    });
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
 
     const { currentPassword, newPassword } = await request.json();
 

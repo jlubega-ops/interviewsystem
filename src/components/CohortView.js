@@ -20,13 +20,16 @@ import {
   Ban,
 } from "lucide-react";
 import { useMessages, ErrorMessages } from "./MessageSystem";
-import { sanitizeHtml } from "../lib/sanitize";
+import RichTextDisplay from "./RichTextDisplay";
+import InstructionListDisplay from "./InstructionListDisplay";
 import EnrollmentDialog from "./EnrollmentDialog";
 import EnrolledCandidates from "./EnrolledCandidates";
 import CohortInterviews from "./CohortInterviews";
 import BulkCandidateUpload from "./BulkCandidateUpload";
 import DeleteCohortModal from "./DeleteCohortModal";
 import AssignExaminerModal from "./AssignExaminerModal";
+import PublishResultsModal from "./PublishResultsModal";
+import { cascadeResultsFlags } from "../lib/resultsPublish";
 import { useServerTime } from "../hooks/useServerTime";
 
 export default function CohortView({ cohortId }) {
@@ -43,6 +46,7 @@ export default function CohortView({ cohortId }) {
   const { showError, showSuccess } = useMessages();
   const [publishToggling, setPublishToggling] = useState(false);
   const [resultsToggling, setResultsToggling] = useState(false);
+  const [showResultsModal, setShowResultsModal] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/verify", { credentials: "include" })
@@ -76,21 +80,43 @@ export default function CohortView({ cohortId }) {
     }
   }, [cohort, cohortId, publishToggling, showError, showSuccess]);
 
-  const handleToggleResults = useCallback(async () => {
+  const handleSaveResultsPublish = useCallback(async (options) => {
     if (!cohort || resultsToggling) return;
-    const nextResultsPublished = !(cohort.resultsPublished === true);
+    const flags = cascadeResultsFlags(options);
     setResultsToggling(true);
     try {
       const response = await fetch(`/api/cohorts/${cohortId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ resultsPublished: nextResultsPublished }),
+        body: JSON.stringify({
+          resultsPublished: flags.resultsPublished,
+          resultsShowAttempt: flags.resultsShowAttempt,
+          resultsShowCorrect: flags.resultsShowCorrect,
+          showScore: flags.resultsPublished,
+          showAttempt: flags.resultsShowAttempt,
+          showCorrect: flags.resultsShowCorrect,
+        }),
       });
       const data = await response.json().catch(() => ({}));
       if (response.ok && data.success) {
-        setCohort((prev) => (prev ? { ...prev, resultsPublished: nextResultsPublished } : null));
-        showSuccess(data.message || (nextResultsPublished ? "Candidates can now view their attempts and scores." : "Results are now hidden from candidates."));
+        setCohort((prev) =>
+          prev
+            ? {
+                ...prev,
+                resultsPublished: flags.resultsPublished,
+                resultsShowAttempt: flags.resultsShowAttempt,
+                resultsShowCorrect: flags.resultsShowCorrect,
+              }
+            : null
+        );
+        setShowResultsModal(false);
+        showSuccess(
+          data.message ||
+            (flags.resultsPublished
+              ? "Results visibility updated."
+              : "Results are now hidden from candidates.")
+        );
       } else {
         showError(data.error || "Failed to update results visibility");
       }
@@ -276,7 +302,7 @@ export default function CohortView({ cohortId }) {
                   role="switch"
                   aria-checked={cohort.resultsPublished === true}
                   disabled={resultsToggling}
-                  onClick={handleToggleResults}
+                  onClick={() => setShowResultsModal(true)}
                   className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
                     cohort.resultsPublished === true ? "bg-emerald-600" : "bg-gray-200"
                   }`}
@@ -291,7 +317,13 @@ export default function CohortView({ cohortId }) {
                   <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
                 ) : (
                   <span className="text-xs text-gray-500">
-                    {cohort.resultsPublished === true ? "On" : "Off"}
+                    {cohort.resultsPublished === true
+                      ? cohort.resultsShowCorrect
+                        ? "On · score, attempt, answers"
+                        : cohort.resultsShowAttempt
+                          ? "On · score and attempt"
+                          : "On · score only"
+                      : "Off"}
                   </span>
                 )}
               </div>
@@ -337,26 +369,15 @@ export default function CohortView({ cohortId }) {
             <h3 className="text-sm font-semibold text-gray-700 mb-2">
               Description
             </h3>
-            <div
-              className="text-gray-600 prose max-w-none"
-              dangerouslySetInnerHTML={{
-                __html: sanitizeHtml(cohort.description),
-              }}
-            />
+            <RichTextDisplay html={cohort.description} className="text-gray-600 text-sm" />
           </div>
         )}
 
-        {cohort.instructions && (
+        {cohort.instructions ? (
           <div className="mb-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">
-              Instructions
-            </h3>
-            <div
-              className="text-gray-600 prose max-w-none"
-              dangerouslySetInnerHTML={{ __html: sanitizeHtml(cohort.instructions) }}
-            />
+            <InstructionListDisplay html={cohort.instructions} />
           </div>
-        )}
+        ) : null}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="flex items-center space-x-3">
@@ -598,6 +619,14 @@ export default function CohortView({ cohortId }) {
         onClose={() => setShowAssignExaminer(false)}
         cohortId={cohortId}
         onAssigned={handleExaminerAssigned}
+      />
+
+      <PublishResultsModal
+        isOpen={showResultsModal}
+        onClose={() => setShowResultsModal(false)}
+        cohort={cohort}
+        saving={resultsToggling}
+        onSave={handleSaveResultsPublish}
       />
     </div>
   );

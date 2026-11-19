@@ -1,21 +1,26 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   Edit,
   Trash2,
   Plus,
   Loader2,
   AlertCircle,
-  CheckCircle,
   FileText,
-  Search,
   Filter,
+  ChevronsDownUp,
+  ChevronsUpDown,
 } from "lucide-react";
 import { useMessages } from "./MessageSystem";
 import QuestionForm from "./QuestionForm";
 import ConfirmationDialog from "./ConfirmationDialog";
-import { sanitizeHtml, stripHtmlToText } from "../lib/sanitize";
+import { htmlToPlainText } from "../lib/sanitize";
+import { useClientTable } from "../hooks/useClientTable";
+import { TableSearch, TablePager } from "./ClientTableChrome";
+import QuestionOptionsPanel from "./QuestionOptionsPanel";
+import { useExpandableIds } from "../hooks/useExpandableIds";
+import { resolveCorrectLetter } from "../lib/questionOptions";
 
 export default function QuestionCards({ interviewId }) {
   const [questions, setQuestions] = useState([]);
@@ -24,7 +29,6 @@ export default function QuestionCards({ interviewId }) {
   const [showQuestionForm, setShowQuestionForm] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState(null);
   const [deleteConfirmQuestionId, setDeleteConfirmQuestionId] = useState(null);
-  const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("ALL");
   const [error, setError] = useState(null);
   const { showSuccess, showError } = useMessages();
@@ -135,15 +139,18 @@ export default function QuestionCards({ interviewId }) {
     );
   };
 
-  // Filter questions based on search and type
-  const filteredQuestions = questions.filter((question) => {
-    const matchesSearch = stripHtmlToText(question.questionText || "")
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase());
-    const matchesType =
-      filterType === "ALL" || question.questionType === filterType;
-    return matchesSearch && matchesType;
+  const typedQuestions = useMemo(
+    () =>
+      filterType === "ALL"
+        ? questions
+        : questions.filter((question) => question.questionType === filterType),
+    [questions, filterType]
+  );
+  const table = useClientTable(typedQuestions, {
+    pageSize: 10,
+    searchText: (question) => htmlToPlainText(question.questionText || ""),
   });
+  const optionExpand = useExpandableIds(table.filtered.map((q) => q.id));
 
   if (isLoading) {
     return (
@@ -174,57 +181,53 @@ export default function QuestionCards({ interviewId }) {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Questions</h3>
-            <p className="text-sm text-gray-600">
-              {filteredQuestions.length} of {questions.length} question
-              {questions.length !== 1 ? "s" : ""}
-            </p>
-          </div>
+    <div className="space-y-3">
+      <div className="flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
+        <TableSearch
+          query={table.query}
+          setQuery={table.setQuery}
+          placeholder="Search questions..."
+          filteredCount={table.filteredCount}
+          totalCount={typedQuestions.length}
+        />
+        <div className="flex items-center gap-2">
+          <Filter className="w-4 h-4 text-gray-500" />
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white"
+          >
+            <option value="ALL">All types</option>
+            <option value="MULTIPLE_CHOICE">Multiple Choice</option>
+            <option value="TRUE_FALSE">True/False</option>
+            <option value="TEXT">Text</option>
+          </select>
+          {table.filteredCount > 0 ? (
+            <button
+              type="button"
+              onClick={optionExpand.toggleAll}
+              className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+            >
+              {optionExpand.allExpanded ? (
+                <ChevronsDownUp className="w-4 h-4" />
+              ) : (
+                <ChevronsUpDown className="w-4 h-4" />
+              )}
+              {optionExpand.allExpanded ? "Collapse options" : "Expand options"}
+            </button>
+          ) : null}
           <button
             onClick={() => setShowQuestionForm(true)}
-            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
           >
             <Plus className="w-4 h-4" />
-            <span>Add Question</span>
+            Add question
           </button>
-        </div>
-
-        {/* Search and Filter */}
-        <div className="flex items-center space-x-4">
-          <div className="flex-1 relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search questions..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-500"
-            />
-          </div>
-          <div className="flex items-center space-x-2">
-            <Filter className="w-4 h-4 text-gray-500" />
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
-            >
-              <option value="ALL">All Types</option>
-              <option value="MULTIPLE_CHOICE">Multiple Choice</option>
-              <option value="TRUE_FALSE">True/False</option>
-              <option value="TEXT">Text</option>
-            </select>
-          </div>
         </div>
       </div>
 
-      {/* Questions List */}
       {questions.length === 0 ? (
-        <div className="text-center py-12">
+        <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
           <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">
             No questions yet
@@ -234,103 +237,84 @@ export default function QuestionCards({ interviewId }) {
           </p>
           <button
             onClick={() => setShowQuestionForm(true)}
-            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors mx-auto"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             <Plus className="w-4 h-4" />
-            <span>Add First Question</span>
+            Add first question
           </button>
         </div>
-      ) : filteredQuestions.length === 0 ? (
-        <div className="text-center py-8">
-          <Search className="w-8 h-8 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            No questions found
-          </h3>
-          <p className="text-gray-600">
-            Try adjusting your search or filter criteria.
-          </p>
-        </div>
+      ) : table.filteredCount === 0 ? (
+        <p className="p-6 text-sm text-gray-500 bg-white rounded-xl border border-gray-200">
+          No questions match your search.
+        </p>
       ) : (
-        <div className="space-y-1.5">
-          {filteredQuestions.map((question, index) => {
-            const options = Array.isArray(question.options) ? question.options : [];
-            const correctLetter = question.correctAnswer ? String(question.correctAnswer).trim().toUpperCase() : "";
-            return (
-              <div
-                key={question.id}
-                className="bg-white rounded-lg border border-gray-200 p-2 hover:shadow-sm transition-shadow"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 mb-1">
-                      <span className="text-xs font-semibold text-gray-700">
-                        Q{index + 1}
-                      </span>
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase">
+                <tr>
+                  <th className="px-4 py-2 w-12">#</th>
+                  <th className="px-4 py-2">Question</th>
+                  <th className="px-4 py-2 hidden md:table-cell">Type</th>
+                  <th className="px-4 py-2">Pts</th>
+                  <th className="px-4 py-2 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {table.pageRows.map((question, index) => (
+                  <tr key={question.id} className="hover:bg-gray-50 align-top">
+                    <td className="px-4 py-2 text-gray-500">
+                      {(table.page - 1) * table.pageSize + index + 1}
+                    </td>
+                    <td className="px-4 py-2">
+                      <p className="text-gray-900">
+                        {htmlToPlainText(question.questionText)}
+                      </p>
+                      <QuestionOptionsPanel
+                        options={question.options}
+                        correctAnswer={resolveCorrectLetter(question)}
+                        showCorrect
+                        expanded={optionExpand.isExpanded(question.id)}
+                        onToggle={() => optionExpand.toggle(question.id)}
+                      />
+                    </td>
+                    <td className="px-4 py-2 hidden md:table-cell">
                       {getQuestionTypeBadge(question.questionType)}
-                      <span className="text-xs text-gray-500">
-                        {question.points} pt{question.points !== 1 ? "s" : ""}
-                      </span>
-                    </div>
-                    <div
-                      className="text-xs text-gray-700 line-clamp-2 mb-1.5"
-                      dangerouslySetInnerHTML={{
-                        __html: sanitizeHtml(question.questionText),
-                      }}
-                    />
-                    {/* Options list: correct option highlighted */}
-                    {options.length > 0 && (
-                      <ul className="space-y-0.5 mt-1">
-                        {options.map((opt) => {
-                          const isCorrect = correctLetter && String(opt?.letter || "").trim().toUpperCase() === correctLetter;
-                          return (
-                            <li
-                              key={opt?.letter || opt?.text}
-                              className={`text-xs py-0.5 px-1.5 rounded flex items-baseline gap-1.5 ${
-                                isCorrect
-                                  ? "bg-green-50 border-l-2 border-green-500 text-green-800 font-medium"
-                                  : "text-gray-600 border-l-2 border-transparent"
-                              }`}
-                            >
-                              <span className="flex-shrink-0 font-medium">{opt?.letter ?? "—"}</span>
-                              <span className="min-w-0 line-clamp-1">
-                                {typeof opt?.text === "string" ? stripHtmlToText(opt.text) : ""}
-                              </span>
-                              {isCorrect && (
-                                <span className="flex-shrink-0 text-green-600 text-[10px]">✓ correct</span>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-0.5 flex-shrink-0">
-                    <button
-                      onClick={() => handleEdit(question)}
-                      className="p-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
-                      title="Edit question"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteClick(question.id)}
-                      disabled={actionLoading === question.id}
-                      className="p-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-                      title="Delete question"
-                    >
-                      {actionLoading === question.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                    </td>
+                    <td className="px-4 py-2 text-gray-600">{question.points}</td>
+                    <td className="px-4 py-2 text-right whitespace-nowrap">
+                      <button
+                        onClick={() => handleEdit(question)}
+                        className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                        title="Edit question"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteClick(question.id)}
+                        disabled={actionLoading === question.id}
+                        className="p-1 text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+                        title="Delete question"
+                      >
+                        {actionLoading === question.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <TablePager
+            page={table.page}
+            setPage={table.setPage}
+            totalPages={table.totalPages}
+            filteredCount={table.filteredCount}
+            pageSize={table.pageSize}
+          />
         </div>
       )}
 

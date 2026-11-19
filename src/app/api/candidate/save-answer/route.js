@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
+import { requireOwnedAttempt } from "../../../../lib/candidateAuth";
 
 export const runtime = "nodejs";
 
 // POST /api/candidate/save-answer - Save individual answer
 export async function POST(request) {
   try {
-    // Check if request has body
     const contentType = request.headers.get("content-type");
     if (!contentType || !contentType.includes("application/json")) {
       return NextResponse.json(
@@ -26,7 +26,7 @@ export async function POST(request) {
       );
     }
 
-    const { attemptId, questionId, answer, typingStats } = body;
+    const { attemptId, questionId, answer, typingStats, accessKey, candidateId } = body;
 
     if (!attemptId || !questionId || answer === undefined) {
       return NextResponse.json(
@@ -35,37 +35,54 @@ export async function POST(request) {
       );
     }
 
-    // Check if answer already exists
+    const owned = await requireOwnedAttempt({
+      attemptId,
+      accessKey,
+      candidateId,
+      requireInProgress: true,
+    });
+    if (owned.error) return owned.error;
+
+    const question = await prisma.question.findFirst({
+      where: {
+        id: String(questionId),
+        interviewId: owned.attempt.interviewId,
+      },
+      select: { id: true },
+    });
+    if (!question) {
+      return NextResponse.json(
+        { success: false, error: "Invalid question" },
+        { status: 400 }
+      );
+    }
+
     const existingAnswer = await prisma.candidateAnswer.findFirst({
       where: {
-        sessionId: attemptId,
-        questionId: questionId,
+        sessionId: owned.attempt.id,
+        questionId: question.id,
       },
     });
 
-    // Prepare answer data
     const answerData = {
       answer: answer,
-      isCorrect: false, // Will be calculated on submission
+      isCorrect: false,
     };
 
-    // Add typing stats if provided (for typing interviews)
     if (typingStats) {
       answerData.typingStats = typingStats;
     }
 
     if (existingAnswer) {
-      // Update existing answer
       await prisma.candidateAnswer.update({
         where: { id: existingAnswer.id },
         data: answerData,
       });
     } else {
-      // Create new answer
       await prisma.candidateAnswer.create({
         data: {
-          sessionId: attemptId,
-          questionId: questionId,
+          sessionId: owned.attempt.id,
+          questionId: question.id,
           ...answerData,
         },
       });

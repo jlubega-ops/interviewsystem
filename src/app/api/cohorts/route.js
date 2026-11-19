@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../lib/prisma";
-import { validateInput, sanitizeUserInput } from "../../../lib/sanitize";
+import { validateInput, sanitizeUserInput, sanitizeHtml } from "../../../lib/sanitize";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../lib/activityLog.js";
+import { requireApiUser } from "../../../lib/apiAuth";
+import { assertOrganisationName } from "../../../lib/organisations";
 
 // Use Node.js runtime instead of Edge Runtime
 export const runtime = "nodejs";
@@ -9,14 +11,10 @@ export const runtime = "nodejs";
 // GET /api/cohorts - Fetch all cohorts (admin: all; examiner: only assigned)
 export async function GET(request) {
   try {
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-    if (!userId || !userRole) {
-      return NextResponse.json(
-        { success: false, error: "Authentication required" },
-        { status: 401 }
-      );
-    }
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
 
     const isExaminer = userRole === "EXAMINER";
     const where = isExaminer
@@ -121,14 +119,10 @@ export async function GET(request) {
 // POST /api/cohorts - Create cohort (admin: must provide organisation; examiner: allowed, auto-assigned and org from profile)
 export async function POST(request) {
   try {
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-    if (!userId || !userRole) {
-      return NextResponse.json(
-        { success: false, error: "Authentication required" },
-        { status: 401 }
-      );
-    }
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
     const body = await request.json();
     const { name, description, instructions, openTime, closeTime, organisation } = body;
     const isExaminer = userRole === "EXAMINER";
@@ -151,12 +145,8 @@ export async function POST(request) {
       }
 
       // Sanitize optional fields
-      sanitizedDescription = description
-        ? sanitizeUserInput(description)
-        : null;
-      sanitizedInstructions = instructions
-        ? sanitizeUserInput(instructions)
-        : null;
+      sanitizedDescription = description ? sanitizeHtml(description) : null;
+      sanitizedInstructions = instructions ? sanitizeHtml(instructions) : null;
     } catch (error) {
       return NextResponse.json(
         {
@@ -192,7 +182,16 @@ export async function POST(request) {
           { status: 400 }
         );
       }
-      cohortOrganisation = organisation.trim();
+      const orgCheck = await assertOrganisationName(organisation, {
+        required: true,
+      });
+      if (orgCheck.error) {
+        return NextResponse.json(
+          { success: false, error: orgCheck.error },
+          { status: 400 }
+        );
+      }
+      cohortOrganisation = orgCheck.name;
     }
 
     const cohort = await prisma.cohort.create({

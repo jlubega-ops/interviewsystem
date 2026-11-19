@@ -11,7 +11,11 @@ export default function ExaminerProfileGate({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (pathname === "/admin/profile") {
+    if (
+      pathname === "/admin/profile" ||
+      pathname === "/admin/login" ||
+      pathname?.startsWith("/admin/login/")
+    ) {
       setLoading(false);
       setShowModal(false);
       return;

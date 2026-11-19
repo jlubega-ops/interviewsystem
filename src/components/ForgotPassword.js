@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import AccessFormBrand from "./AccessFormBrand";
+import AuthSplitLayout from "./AuthSplitLayout";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -51,8 +52,8 @@ export default function ForgotPassword() {
       } else {
         setError(result.error || "Failed to send password reset email");
       }
-    } catch (error) {
-      console.error("Error sending password reset:", error);
+    } catch (err) {
+      console.error("Error sending password reset:", err);
       setError("Failed to send password reset email");
     } finally {
       setIsLoading(false);
@@ -60,109 +61,89 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-white to-blue-50 items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <AccessFormBrand
-          title="Forgot Password?"
-          subtitle="Enter your email and we'll send you a link to reset your password."
-        />
+    <AuthSplitLayout>
+      <AccessFormBrand
+        showLogo={false}
+        title="Forgot password?"
+        subtitle="Enter your email and we'll send you a link to reset your password."
+      />
 
-        {/* Form */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200 p-8">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Error Message */}
-            {error && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center space-x-2 text-red-800">
-                <AlertTriangle className="w-5 h-5" />
-                <span>{error}</span>
-                <button
-                  onClick={() => setError(null)}
-                  className="ml-auto text-red-600 hover:text-red-800"
-                >
-                  <XCircle className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-
-            {/* Success Message */}
-            {success && (
-              <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center space-x-2 text-green-800">
-                <CheckCircle className="w-5 h-5" />
-                <span>{success}</span>
-                <button
-                  onClick={() => setSuccess(null)}
-                  className="ml-auto text-green-600 hover:text-green-800"
-                >
-                  <XCircle className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-
-            {/* Email Input */}
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-gray-700 mb-2"
-              >
-                Email Address
-              </label>
-              <input
-                type="email"
-                id="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-gray-900 bg-white placeholder-gray-500"
-                placeholder="Enter your email address"
-                required
-                disabled={isLoading}
-              />
-            </div>
-
-            {/* Submit Button */}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {error ? (
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center space-x-2 text-red-800">
+            <AlertTriangle className="w-5 h-5 shrink-0" />
+            <span>{error}</span>
             <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full flex justify-center items-center space-x-2 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              type="button"
+              onClick={() => setError(null)}
+              className="ml-auto text-red-600 hover:text-red-800"
             >
-              {isLoading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Sending...</span>
-                </>
-              ) : (
-                <>
-                  <Mail className="w-4 h-4" />
-                  <span>Send Reset Link</span>
-                </>
-              )}
+              <XCircle className="w-4 h-4" />
             </button>
-          </form>
-
-          {/* Back to Login */}
-          <div className="mt-6 text-center">
-            <Link
-              href="/admin/login"
-              className="flex items-center justify-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Back to Login</span>
-            </Link>
           </div>
+        ) : null}
+
+        {success ? (
+          <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center space-x-2 text-green-800">
+            <CheckCircle className="w-5 h-5 shrink-0" />
+            <span>{success}</span>
+            <button
+              type="button"
+              onClick={() => setSuccess(null)}
+              className="ml-auto text-green-600 hover:text-green-800"
+            >
+              <XCircle className="w-4 h-4" />
+            </button>
+          </div>
+        ) : null}
+
+        <div>
+          <label
+            htmlFor="email"
+            className="block text-sm font-medium text-gray-700 mb-2"
+          >
+            Email Address
+          </label>
+          <input
+            type="email"
+            id="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-gray-900 bg-white placeholder-gray-500"
+            placeholder="Enter your email address"
+            required
+            disabled={isLoading}
+          />
         </div>
 
-        {/* Help Text */}
-        <div className="text-center">
-          <p className="text-sm text-gray-500">
-            Remember your password?{" "}
-            <Link
-              href="/admin/login"
-              className="text-blue-600 hover:text-blue-700 font-medium"
-            >
-              Sign in here
-            </Link>
-          </p>
-        </div>
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="w-full flex justify-center items-center space-x-2 bg-blue-600 text-white py-3 px-4 rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+        >
+          {isLoading ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <span>Sending...</span>
+            </>
+          ) : (
+            <>
+              <Mail className="w-4 h-4" />
+              <span>Send Reset Link</span>
+            </>
+          )}
+        </button>
+      </form>
+
+      <div className="mt-6 text-center">
+        <Link
+          href="/admin/login"
+          className="inline-flex items-center justify-center space-x-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Back to login</span>
+        </Link>
       </div>
-    </div>
+    </AuthSplitLayout>
   );
 }

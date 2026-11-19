@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "@/lib/apiAuth";
 import { prisma } from "@/lib/prisma";
 import { canAccessQuestionBank } from "@/lib/questionBankAccess";
 
@@ -7,15 +8,10 @@ export const runtime = "nodejs";
 // GET /api/question-banks - List question banks the current user can access
 export async function GET(request) {
   try {
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-
-    if (!userId || !userRole) {
-      return NextResponse.json(
-        { success: false, error: "Authentication required" },
-        { status: 401 }
-      );
-    }
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
 
     const banks = await prisma.questionBank.findMany({
       where: {
@@ -49,15 +45,10 @@ export async function GET(request) {
 // POST /api/question-banks - Create a question bank
 export async function POST(request) {
   try {
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-
-    if (!userId || !userRole) {
-      return NextResponse.json(
-        { success: false, error: "Authentication required" },
-        { status: 401 }
-      );
-    }
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
 
     if (!["ADMIN", "EXAMINER", "SUPERADMIN"].includes(userRole)) {
       return NextResponse.json(

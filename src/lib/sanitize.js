@@ -1,50 +1,128 @@
-// HTML sanitization utilities for the interview system
+const ALLOWED_TAGS = new Set([
+  "p",
+  "br",
+  "strong",
+  "b",
+  "em",
+  "i",
+  "u",
+  "s",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "ul",
+  "ol",
+  "li",
+  "span",
+  "div",
+  "blockquote",
+  "code",
+  "pre",
+  "a",
+  "sub",
+  "sup",
+]);
+
+const VOID_TAGS = new Set(["br"]);
+
+const ALLOWED_ATTR = {
+  a: new Set(["href", "target", "rel"]),
+  span: new Set(["class", "style"]),
+  p: new Set(["class", "style"]),
+  div: new Set(["class", "style"]),
+  h1: new Set(["class", "style"]),
+  h2: new Set(["class", "style"]),
+  h3: new Set(["class", "style"]),
+  h4: new Set(["class", "style"]),
+  h5: new Set(["class", "style"]),
+  h6: new Set(["class", "style"]),
+};
+
+const SAFE_URI = /^(?:https?:|mailto:|\/|#)/i;
+const UNSAFE_CSS = /expression|url\s*\(|javascript:|behavior|@import/i;
+
+function decodeAttr(value) {
+  return value
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&amp;/gi, "&");
+}
+
+function sanitizeStyle(value) {
+  const decoded = decodeAttr(value);
+  if (UNSAFE_CSS.test(decoded)) return null;
+  return decoded.replace(/["<>]/g, "");
+}
+
+function sanitizeHref(value) {
+  const decoded = decodeAttr(value).trim();
+  if (!SAFE_URI.test(decoded)) return null;
+  return decoded;
+}
+
+function sanitizeAttributes(tag, rawAttrs) {
+  const allowed = ALLOWED_ATTR[tag];
+  if (!allowed || !rawAttrs) return "";
+
+  let out = "";
+  const attrRe = /([^\s=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
+  let match;
+  while ((match = attrRe.exec(rawAttrs)) !== null) {
+    const name = match[1].toLowerCase();
+    if (name.startsWith("on") || name.startsWith("xmlns") || name === "srcdoc") continue;
+    if (!allowed.has(name)) continue;
+    let value = match[2] ?? match[3] ?? match[4] ?? "";
+    if (name === "href") {
+      value = sanitizeHref(value);
+      if (!value) continue;
+      out += ` href="${value.replace(/"/g, "&quot;")}"`;
+      if (tag === "a") out += ` rel="noopener noreferrer"`;
+      continue;
+    }
+    if (name === "target") {
+      if (value !== "_blank" && value !== "_self") continue;
+      out += ` target="${value}"`;
+      continue;
+    }
+    if (name === "style") {
+      value = sanitizeStyle(value);
+      if (!value) continue;
+      out += ` style="${value.replace(/"/g, "&quot;")}"`;
+      continue;
+    }
+    if (name === "class") {
+      const cls = value.replace(/[^a-zA-Z0-9 _-]/g, "");
+      if (!cls) continue;
+      out += ` class="${cls}"`;
+    }
+  }
+  return out;
+}
 
 /**
- * Sanitize HTML content to prevent XSS attacks
- * @param {string} html - HTML content to sanitize
- * @returns {string} - Sanitized HTML content
+ * Allowlist HTML sanitizer. Unknown tags/attributes are dropped.
+ * @param {string} html
+ * @returns {string}
  */
 export const sanitizeHtml = (html) => {
   if (typeof html !== "string") return "";
 
-  // Basic HTML sanitization - remove dangerous tags and attributes
-  return (
-    html
-      // Remove script tags completely
-      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-      // Remove iframe tags
-      .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, "")
-      // Remove object tags
-      .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, "")
-      // Remove embed tags
-      .replace(/<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi, "")
-      // Remove applet tags
-      .replace(/<applet\b[^<]*(?:(?!<\/applet>)<[^<]*)*<\/applet>/gi, "")
-      // Remove form tags
-      .replace(/<form\b[^<]*(?:(?!<\/form>)<[^<]*)*<\/form>/gi, "")
-      // Remove input tags
-      .replace(/<input\b[^<]*>/gi, "")
-      // Remove button tags
-      .replace(/<button\b[^<]*(?:(?!<\/button>)<[^<]*)*<\/button>/gi, "")
-      // Remove event handlers (onclick, onload, etc.)
-      .replace(/on\w+\s*=\s*["'][^"']*["']/gi, "")
-      // Remove javascript: URLs
-      .replace(/javascript:/gi, "")
-      // Remove vbscript: URLs
-      .replace(/vbscript:/gi, "")
-      // Remove data: URLs
-      .replace(/data:/gi, "")
-      // Remove style attributes that could contain javascript
-      .replace(/style\s*=\s*["'][^"']*javascript[^"']*["']/gi, "")
-      // Remove href attributes with javascript
-      .replace(/href\s*=\s*["']javascript:[^"']*["']/gi, "")
-      // Remove src attributes with javascript
-      .replace(/src\s*=\s*["']javascript:[^"']*["']/gi, "")
-      // Clean up any remaining dangerous attributes
-      .replace(/\s*(on\w+|style|href|src)\s*=\s*["'][^"']*["']/gi, "")
-      .trim()
-  );
+  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
+  return withoutComments
+    .replace(/<(\/)?([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>/g, (full, closing, rawTag, rawAttrs) => {
+      const tag = rawTag.toLowerCase();
+      if (!ALLOWED_TAGS.has(tag)) return "";
+      if (closing) return VOID_TAGS.has(tag) ? "" : `</${tag}>`;
+      const attrs = sanitizeAttributes(tag, rawAttrs);
+      if (VOID_TAGS.has(tag)) return `<${tag}${attrs}>`;
+      return `<${tag}${attrs}>`;
+    })
+    .trim();
 };
 
 /**
@@ -52,9 +130,37 @@ export const sanitizeHtml = (html) => {
  * @param {string} html - HTML or plain text
  * @returns {string} - Plain text with tags removed
  */
-export const stripHtmlToText = (html) => {
-  if (typeof html !== "string") return "";
-  return html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
+export const stripHtmlToText = (html) => htmlToPlainText(html);
+
+const GLUED_BLOCK_TAGS = "p|div|span|h[1-6]|ul|ol|li|blockquote|pre";
+
+/**
+ * Plain text from rich-editor HTML, including values that lost < > on save
+ * (e.g. "pThis is an interview/p").
+ * Do not treat single-letter tags like s/u/b/i as glued prefixes — that
+ * would strip "Select" to "elect" and "Submit" to "bmit".
+ */
+export const htmlToPlainText = (value) => {
+  if (typeof value !== "string") return "";
+  let s = value;
+  if (/<[a-z][\s\S]*>/i.test(s)) {
+    s = s.replace(/<[^>]*>/g, " ");
+  } else {
+    const open = new RegExp(`^(?:${GLUED_BLOCK_TAGS})(?=[A-Z0-9“"'(])`);
+    const close = new RegExp(`\\/(?:${GLUED_BLOCK_TAGS})\\s*$`);
+    const glued = new RegExp(`\\/(?:${GLUED_BLOCK_TAGS})(?:${GLUED_BLOCK_TAGS})`, "g");
+    s = s.replace(open, "");
+    s = s.replace(glued, " ");
+    s = s.replace(close, "");
+  }
+  return s
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/\s+/g, " ")
+    .trim();
 };
 
 /**

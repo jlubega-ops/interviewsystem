@@ -13,7 +13,7 @@ import {
 import { useMessages } from "./MessageSystem";
 import TypingQuestionForm from "./TypingQuestionForm";
 import ConfirmationDialog from "./ConfirmationDialog";
-import { sanitizeHtml } from "../lib/sanitize";
+import RichTextDisplay from "./RichTextDisplay";
 
 export default function TypingQuestionCards({ interviewId }) {
   const [question, setQuestion] = useState(null);
@@ -195,12 +195,9 @@ export default function TypingQuestionCards({ interviewId }) {
                 <h4 className="text-sm font-medium text-gray-700 mb-2">
                   Question Text:
                 </h4>
-                <div
-                  className="text-sm text-gray-900 bg-gray-50 rounded-lg p-4 border"
-                  dangerouslySetInnerHTML={{
-                    __html: sanitizeHtml(question.questionText),
-                  }}
-                />
+                <div className="text-sm text-gray-900 bg-gray-50 rounded-lg p-4 border">
+                  <RichTextDisplay html={question.questionText} />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-sm">

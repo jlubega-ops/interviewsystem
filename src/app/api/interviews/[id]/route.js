@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../../lib/apiAuth";
+import { invalidateInterview } from "../../../../lib/cachedReads";
 import { prisma } from "../../../../lib/prisma";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../../lib/activityLog.js";
+import { sanitizeHtml } from "../../../../lib/sanitize";
 
 export const runtime = "nodejs";
 
@@ -10,10 +13,13 @@ export async function GET(request, { params }) {
     const { id } = await params;
     // Interview ID received
 
-    // Get user info from headers (set by middleware)
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-    const userEmail = request.headers.get("x-user-email");
+    const auth = await requireApiUser(request, {
+      roles: ["ADMIN", "EXAMINER", "SUPERADMIN"],
+    });
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
+    const userEmail = auth.user.email;
 
     // User info from middleware headers
 
@@ -107,10 +113,13 @@ export async function PATCH(request, { params }) {
     const { id } = await params;
     const body = await request.json();
 
-    // Get user info from headers (set by middleware)
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-    const userEmail = request.headers.get("x-user-email");
+    const auth = await requireApiUser(request, {
+      roles: ["ADMIN", "EXAMINER", "SUPERADMIN"],
+    });
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
+    const userEmail = auth.user.email;
 
     if (!userId || !userRole) {
       return NextResponse.json(
@@ -194,8 +203,8 @@ export async function PATCH(request, { params }) {
       }
 
       updateData = {
-        description: description.trim(),
-        instructions: instructions.trim(),
+        description: sanitizeHtml(description.trim()),
+        instructions: sanitizeHtml(instructions.trim()),
         type: type,
         durationMinutes: parseInt(durationMinutes),
         isActive: Boolean(isActive),
@@ -220,6 +229,8 @@ export async function PATCH(request, { params }) {
         },
       },
     });
+
+    invalidateInterview(id);
 
     return NextResponse.json({
       success: true,

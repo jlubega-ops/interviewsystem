@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Edit, Trash2, Plus, Loader2, AlertCircle, FileText } from "lucide-react";
 import { useMessages } from "./MessageSystem";
-import { sanitizeHtml, stripHtmlToText } from "../lib/sanitize";
+import { htmlToPlainText } from "../lib/sanitize";
+import { useClientTable } from "../hooks/useClientTable";
+import { TableSearch, TablePager } from "./ClientTableChrome";
 import QuestionBankQuestionForm from "./QuestionBankQuestionForm";
 import ConfirmationDialog from "./ConfirmationDialog";
 
@@ -14,7 +16,6 @@ export default function QuestionBankQuestionCards({ questionBankId }) {
   const [showForm, setShowForm] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
-  const [searchTerm, setSearchTerm] = useState("");
   const fetchingRef = useRef(false);
   const { showSuccess, showError } = useMessages();
 
@@ -68,9 +69,11 @@ export default function QuestionBankQuestionCards({ questionBankId }) {
     setEditingQuestion(null);
   };
 
-  const filtered = questions.filter((q) =>
-    stripHtmlToText(q.questionText || "").toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const table = useClientTable(questions, {
+    pageSize: 10,
+    searchText: (q) => htmlToPlainText(q.questionText || ""),
+  });
+  const filtered = table.pageRows;
 
   if (isLoading) {
     return (
@@ -85,12 +88,12 @@ export default function QuestionBankQuestionCards({ questionBankId }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
         <div className="flex-1">
-          <input
-            type="text"
+          <TableSearch
+            query={table.query}
+            setQuery={table.setQuery}
             placeholder="Search questions..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900"
+            filteredCount={table.filteredCount}
+            totalCount={table.totalCount}
           />
         </div>
         <button
@@ -101,9 +104,6 @@ export default function QuestionBankQuestionCards({ questionBankId }) {
           Add Question
         </button>
       </div>
-      <p className="text-sm text-gray-600">
-        {filtered.length} of {questions.length} question{questions.length !== 1 ? "s" : ""}
-      </p>
       {questions.length === 0 ? (
         <div className="text-center py-12 border border-dashed border-gray-300 rounded-xl">
           <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -116,59 +116,63 @@ export default function QuestionBankQuestionCards({ questionBankId }) {
             Add First Question
           </button>
         </div>
-      ) : filtered.length === 0 ? (
+      ) : table.filteredCount === 0 ? (
         <p className="text-gray-600 py-8">No questions match your search.</p>
       ) : (
-        <div className="space-y-2">
-          {filtered.map((q, index) => {
-            const opts = Array.isArray(q.options) ? q.options : [];
-            const correctLetter = (q.correctAnswer || "").toString().trim().toUpperCase();
-            return (
-              <div key={q.id} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-sm transition-shadow">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-semibold text-gray-700">Q{index + 1}</span>
-                      <span className="text-xs text-gray-500">{q.points ?? 1} pt</span>
-                    </div>
-                    <div className="text-sm text-gray-700 line-clamp-2 mb-1" dangerouslySetInnerHTML={{ __html: sanitizeHtml(q.questionText || "") }} />
-                    {opts.length > 0 && (
-                      <ul className="space-y-0.5 mt-1">
-                        {opts.map((opt) => (
-                          <li
-                            key={opt?.letter}
-                            className={`text-xs py-0.5 px-1.5 rounded flex gap-1.5 ${correctLetter && String(opt?.letter).toUpperCase() === correctLetter ? "bg-green-50 text-green-800 font-medium" : "text-gray-600"}`}
-                          >
-                            <span>{opt?.letter ?? "—"}</span>
-                            <span className="line-clamp-1">{typeof opt?.text === "string" ? stripHtmlToText(opt.text) : ""}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <button
-                      onClick={() => { setEditingQuestion(q); setShowForm(true); }}
-                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      title="Edit"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => setDeleteId(q.id)}
-                      disabled={actionLoading === q.id}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                      title="Delete"
-                    >
-                      {actionLoading === q.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase">
+                <tr>
+                  <th className="px-4 py-2 w-12">#</th>
+                  <th className="px-4 py-2">Question</th>
+                  <th className="px-4 py-2">Pts</th>
+                  <th className="px-4 py-2 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filtered.map((q, index) => (
+                  <tr key={q.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2 text-gray-500">
+                      {(table.page - 1) * table.pageSize + index + 1}
+                    </td>
+                    <td className="px-4 py-2">
+                      <p className="text-gray-900 line-clamp-2">
+                        {htmlToPlainText(q.questionText || "")}
+                      </p>
+                    </td>
+                    <td className="px-4 py-2 text-gray-600">{q.points ?? 1}</td>
+                    <td className="px-4 py-2 text-right whitespace-nowrap">
+                      <button
+                        onClick={() => { setEditingQuestion(q); setShowForm(true); }}
+                        className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                        title="Edit"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setDeleteId(q.id)}
+                        disabled={actionLoading === q.id}
+                        className="p-1 text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+                        title="Delete"
+                      >
+                        {actionLoading === q.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
+      <TablePager
+        page={table.page}
+        setPage={table.setPage}
+        totalPages={table.totalPages}
+        filteredCount={table.filteredCount}
+        pageSize={table.pageSize}
+      />
 
       <QuestionBankQuestionForm
         isOpen={showForm}

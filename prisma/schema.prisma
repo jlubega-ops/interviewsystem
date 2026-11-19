@@ -112,6 +112,8 @@ model Cohort {
   isActive       Boolean          @default(true) @map("is_active")
   isPublished     Boolean          @default(true) @map("is_published")
   resultsPublished Boolean        @default(false) @map("results_published")
+  resultsShowAttempt Boolean      @default(false) @map("results_show_attempt")
+  resultsShowCorrect Boolean      @default(false) @map("results_show_correct")
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
   interviews   CohortInterview[]
@@ -211,6 +213,7 @@ model CandidateSession {
   answeredQuestions Int               @default(0) @map("answered_questions")
   leaveAttempts     Int               @default(5) @map("leave_attempts")
   submissionReason  String?           @map("submission_reason")
+  shuffleLayout     Json?             @map("shuffle_layout")
   candidateAnswers  CandidateAnswer[]
   interview         Interview         @relation(fields: [interviewId], references: [id], onDelete: Cascade)
 
@@ -318,6 +321,19 @@ model ActivityLog {
   @@index([actorEmail], map: "idx_activity_logs_actor_email")
   @@index([actorOrg], map: "idx_activity_logs_actor_org")
   @@map("activity_logs")
+}
+
+model Organisation {
+  id          String   @id @default(uuid()) @db.VarChar(191)
+  name        String   @unique @db.VarChar(255)
+  description String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+  createdBy   String?  @map("created_by") @db.VarChar(191)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([createdBy], map: "idx_organisations_created_by")
+  @@map("organisations")
 }
 
 enum Role {

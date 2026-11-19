@@ -6,6 +6,8 @@ import {
 } from "../../../../lib/timeValidation";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../../lib/activityLog.js";
 import { computeTypingScore } from "../../../../lib/typingScore.js";
+import { requireOwnedAttempt } from "../../../../lib/candidateAuth.js";
+import { scoreObjectiveAttempt } from "../../../../lib/scoreObjectiveAttempt.js";
 // Scoring should be independent of shuffling: compare stable option letters.
 
 export const runtime = "nodejs";
@@ -15,7 +17,7 @@ export async function POST(request) {
   try {
     const body = await request.json();
 
-    const { attemptId, answers, finalAnswer, typingStats, timeSpent, submissionReason } = body;
+    const { attemptId, answers, finalAnswer, typingStats, timeSpent, submissionReason, accessKey, candidateId } = body;
 
     if (!attemptId) {
       return NextResponse.json(
@@ -41,6 +43,13 @@ export async function POST(request) {
     }
 
     const parsedAttemptId = attemptId.trim();
+
+    const owned = await requireOwnedAttempt({
+      attemptId: parsedAttemptId,
+      accessKey,
+      candidateId,
+    });
+    if (owned.error) return owned.error;
 
     // Get the attempt
     const attempt = await prisma.candidateSession.findUnique({
@@ -150,105 +159,44 @@ export async function POST(request) {
       const questionsOrdered = [...attempt.interview.questions].sort(
         (a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0)
       );
+      const scored = scoreObjectiveAttempt(questionsOrdered, answers || {});
+      score = scored.score;
+      correctAnswers = scored.correctAnswers;
+      answeredCount = scored.answeredCount;
 
-      for (let i = 0; i < questionsOrdered.length; i++) {
-        const question = questionsOrdered[i];
-        const rawUserAnswer =
-          answers[question.id] ?? answers[i] ?? answers[String(i)];
-        const rawCorrect = question.correctAnswer;
-
-        // Client sends stable option.letter (e.g. "A","B","C","D").
-        const userAnswer =
-          rawUserAnswer != null
-            ? String(rawUserAnswer).trim().toUpperCase().slice(0, 1)
-            : "";
-
-        if (userAnswer !== "") answeredCount++;
-
-        const correctAnswerRaw =
-          rawCorrect != null
-            ? typeof rawCorrect === "string"
-              ? rawCorrect.trim()
-              : String(rawCorrect ?? "").trim()
-            : "";
-
-        let isCorrect = false;
-        if (userAnswer !== "" || correctAnswerRaw !== "") {
-          if (question.questionType === "TEXT") {
-            isCorrect =
-              userAnswer.length > 0 &&
-              correctAnswerRaw.length > 0 &&
-              userAnswer.toLowerCase() === correctAnswerRaw.toLowerCase();
-          } else {
-            // Resolve correct answer to option letter (DB may store letter or option text)
-            let referenceLetter = correctAnswerRaw.toUpperCase();
-            const options = Array.isArray(question.options) ? question.options : [];
-            if (options.length > 0) {
-              const singleLetter = /^[A-Z]$/i.test(referenceLetter);
-              if (!singleLetter) {
-                const byText = options.find(
-                  (opt) =>
-                    opt &&
-                    typeof opt.text === "string" &&
-                    opt.text.trim().toLowerCase() === correctAnswerRaw.toLowerCase()
-                );
-                if (byText && typeof byText.letter === "string") {
-                  referenceLetter = byText.letter.trim().toUpperCase();
-                }
-              } else {
-                referenceLetter = referenceLetter.slice(0, 1);
-              }
-            } else {
-              referenceLetter = referenceLetter.slice(0, 1);
-            }
-            isCorrect =
-              userAnswer.length > 0 &&
-              referenceLetter.length > 0 &&
-              userAnswer === referenceLetter;
-          }
-        }
-
-        if (isCorrect) {
-          score += question.points;
-          correctAnswers++;
-        }
-
-        // Store candidate answer (update if exists, create if not)
+      for (const row of scored.questionResults) {
         const existingAnswer = await prisma.candidateAnswer.findFirst({
           where: {
             sessionId: parsedAttemptId,
-            questionId: question.id,
+            questionId: row.questionId,
           },
         });
 
         if (existingAnswer) {
-          // Update existing answer
           await prisma.candidateAnswer.update({
             where: { id: existingAnswer.id },
             data: {
-              answer: userAnswer,
-              isCorrect: isCorrect,
+              answer: row.userAnswer,
+              isCorrect: row.isCorrect,
             },
           });
         } else {
-          // Create new answer
           await prisma.candidateAnswer.create({
             data: {
               sessionId: parsedAttemptId,
-              questionId: question.id,
-              answer: userAnswer,
-              isCorrect: isCorrect,
+              questionId: row.questionId,
+              answer: row.userAnswer,
+              isCorrect: row.isCorrect,
             },
           });
         }
 
         questionResults.push({
-          questionId: question.id,
-          userAnswer: userAnswer,
-          correctAnswer: question.correctAnswer,
-          isCorrect: isCorrect,
-          points: question.points,
-          pointsEarned: isCorrect ? question.points : 0,
+          questionId: row.questionId,
+          userAnswer: row.userAnswer,
+          isCorrect: row.isCorrect,
+          points: row.points,
+          pointsEarned: row.pointsEarned,
         });
       }
     }

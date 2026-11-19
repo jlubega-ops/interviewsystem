@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import OrganisationSelect from "./OrganisationSelect";
 import {
   UserPlus,
   Edit,
@@ -88,6 +89,10 @@ export default function UserForm({ user, onSuccess, onCancel }) {
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       setError("Please enter a valid email address");
+      return false;
+    }
+    if (!formData.organisation.trim()) {
+      setError("Organisation is required");
       return false;
     }
     return true;
@@ -348,16 +353,12 @@ export default function UserForm({ user, onSuccess, onCancel }) {
                 htmlFor="organisation"
                 className="block text-sm font-medium text-gray-700 mb-2"
               >
-                Organisation / Institution
+                Organisation *
               </label>
-              <input
-                type="text"
-                id="organisation"
-                name="organisation"
+              <OrganisationSelect
                 value={formData.organisation}
                 onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-gray-900 bg-white placeholder-gray-500"
-                placeholder="Enter organisation or institution"
+                required
               />
             </div>
 

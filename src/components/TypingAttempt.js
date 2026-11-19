@@ -20,6 +20,7 @@ import { useServerTime } from "../hooks/useServerTime";
 import { useCandidateIdleLogout } from "../hooks/useCandidateIdleLogout";
 import { useOfflineDetection } from "../hooks/useOfflineDetection";
 import OfflineOverlay from "./OfflineOverlay";
+import { getCandidateCredentials } from "../lib/candidateCredentials";
 
 export default function TypingAttempt() {
   const { serverNow } = useServerTime();
@@ -150,6 +151,7 @@ export default function TypingAttempt() {
                       now
                     ),
                     submissionReason: "TIME_UP",
+                    ...getCandidateCredentials(),
                   };
 
                   // Auto-submitting with retrieved attemptId
@@ -241,6 +243,7 @@ export default function TypingAttempt() {
             now
           ),
           submissionReason: "TIME_UP",
+          ...getCandidateCredentials(),
         };
 
         // Auto-submitting attempt
@@ -311,7 +314,7 @@ export default function TypingAttempt() {
             headers: {
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ attemptId }),
+            body: JSON.stringify({ attemptId, ...getCandidateCredentials() }),
           });
 
           if (response.ok) {
@@ -786,6 +789,7 @@ export default function TypingAttempt() {
           questionId: question.id,
           answer: text || "",
           typingStats: typingStats,
+          ...getCandidateCredentials(),
         };
 
         console.log("Saving answer with data:", saveData);
@@ -860,6 +864,7 @@ export default function TypingAttempt() {
               )
             : typingStats,
         submissionReason: "SELF_SUBMITTED",
+        ...getCandidateCredentials(),
       };
 
       console.log("Submitting typing attempt with data:", submitData);

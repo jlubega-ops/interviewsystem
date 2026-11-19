@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../../../lib/prisma";
+import { invalidateInterview } from "../../../../../../lib/cachedReads";
 
 export const runtime = "nodejs";
 
@@ -121,6 +122,8 @@ export async function PUT(request, { params }) {
         points: parseInt(points),
       },
     });
+
+    invalidateInterview(interviewId);
 
     return NextResponse.json({
       success: true,
@@ -247,6 +250,8 @@ export async function DELETE(request, { params }) {
         },
       },
     });
+
+    invalidateInterview(interviewId);
 
     return NextResponse.json({
       success: true,

@@ -1,35 +1,36 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import {
-  Calendar,
-  Clock,
-  Users,
-  Eye,
-  Edit,
-  Trash2,
-  Plus,
-  MoreVertical,
-  CheckCircle,
-  AlertCircle,
-  Loader2,
-  BookOpen,
-} from "lucide-react";
-import { useMessages, SuccessMessages, ErrorMessages } from "./MessageSystem";
-import { sanitizeHtml } from "../lib/sanitize";
-import NavigationHeader from "./NavigationHeader";
+import { useRouter } from "next/navigation";
+import { Edit, Trash2, Plus, AlertCircle, Users } from "lucide-react";
+import { useMessages } from "./MessageSystem";
+import { htmlToPlainText } from "../lib/sanitize";
 import DeleteCohortModal from "./DeleteCohortModal";
 import { useServerTime } from "../hooks/useServerTime";
+import { useClientTable } from "../hooks/useClientTable";
+import { TableSearch, TablePager, onTableRowClick } from "./ClientTableChrome";
+
+const searchText = (cohort) =>
+  [
+    cohort.name,
+    htmlToPlainText(cohort.description || ""),
+    htmlToPlainText(cohort.instructions || ""),
+    cohort.organisation,
+    ...(cohort.examinerNames || []),
+  ].join(" ");
 
 export default function CohortsList() {
+  const router = useRouter();
   const { serverNow } = useServerTime();
   const [cohorts, setCohorts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
-  const { showSuccess, showError } = useMessages();
+  const { showSuccess } = useMessages();
+
+  const table = useClientTable(cohorts, { searchText, pageSize: 10 });
 
   useEffect(() => {
     fetchCohorts();
@@ -47,40 +48,28 @@ export default function CohortsList() {
       setIsLoading(true);
       const response = await fetch("/api/cohorts");
       const data = await response.json();
-
-      if (response.ok) {
-        setCohorts(data.cohorts || []);
-      } else {
-        setError(data.error || "Failed to fetch cohorts");
-      }
-    } catch (err) {
+      if (response.ok) setCohorts(data.cohorts || []);
+      else setError(data.error || "Failed to fetch cohorts");
+    } catch {
       setError("Network error while fetching cohorts");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const getStatusColor = (cohort) => {
-    if (!serverNow) return "text-gray-600 bg-gray-100";
-    const openTime = new Date(cohort.openTime);
-    const closeTime = new Date(cohort.closeTime);
-    if (serverNow < openTime) return "text-blue-600 bg-blue-100";
-    if (serverNow >= openTime && serverNow <= closeTime) return "text-green-600 bg-green-100";
-    return "text-gray-600 bg-gray-100";
-  };
-
-  const getStatusText = (cohort) => {
-    if (!serverNow) return "—";
-    const openTime = new Date(cohort.openTime);
-    const closeTime = new Date(cohort.closeTime);
-    if (serverNow < openTime) return "Upcoming";
-    if (serverNow >= openTime && serverNow <= closeTime) return "Active";
-    return "Closed";
-  };
-
-  const handleDeleteClick = (cohortId, cohortName) => {
-    setDeleteConfirm({ cohortId, cohortName });
-  };
+  const getStatus = useCallback(
+    (cohort) => {
+      if (!serverNow) return { text: "—", className: "bg-gray-100 text-gray-600" };
+      const openTime = new Date(cohort.openTime);
+      const closeTime = new Date(cohort.closeTime);
+      if (serverNow < openTime)
+        return { text: "Upcoming", className: "bg-blue-100 text-blue-700" };
+      if (serverNow >= openTime && serverNow <= closeTime)
+        return { text: "Active", className: "bg-green-100 text-green-700" };
+      return { text: "Closed", className: "bg-gray-100 text-gray-600" };
+    },
+    [serverNow]
+  );
 
   const handleDeleteSuccess = () => {
     if (deleteConfirm) {
@@ -92,185 +81,153 @@ export default function CohortsList() {
     }
   };
 
+  const isAdmin =
+    currentUser?.role === "SUPERADMIN" || currentUser?.role === "ADMIN";
+
   if (isLoading) {
     return (
-      <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200 p-8">
-        <div className="flex items-center justify-center py-12">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-          <span className="ml-3 text-gray-600">Loading cohorts...</span>
-        </div>
+      <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-600">
+        Loading cohorts...
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200 p-8">
-        <div className="text-center py-12">
-          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            Error Loading Cohorts
-          </h3>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <button
-            onClick={fetchCohorts}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Try Again
-          </button>
-        </div>
+      <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+        <AlertCircle className="w-10 h-10 text-red-500 mx-auto mb-3" />
+        <p className="text-gray-700 mb-3">{error}</p>
+        <button
+          onClick={fetchCohorts}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg"
+        >
+          Try again
+        </button>
       </div>
     );
   }
 
-  const isAdmin = currentUser?.role === "SUPERADMIN" || currentUser?.role === "ADMIN";
-
   return (
-    <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200">
-      <div className="p-6 border-b border-gray-200">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900">
-            {isAdmin ? "All Cohorts" : "My Cohorts"}
-          </h2>
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="p-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+        <TableSearch
+          query={table.query}
+          setQuery={table.setQuery}
+          placeholder="Search cohorts..."
+          filteredCount={table.filteredCount}
+          totalCount={table.totalCount}
+        />
+        <Link
+          href="/admin/cohorts/create"
+          className="inline-flex items-center justify-center gap-2 bg-blue-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-blue-700"
+        >
+          <Plus className="w-4 h-4" />
+          Create cohort
+        </Link>
+      </div>
+
+      {cohorts.length === 0 ? (
+        <div className="text-center py-12">
+          <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-gray-600 mb-4">
+            {isAdmin ? "No cohorts yet." : "No cohorts assigned."}
+          </p>
           <Link
             href="/admin/cohorts/create"
-            className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg"
           >
             <Plus className="w-4 h-4" />
-            <span>Create Cohort</span>
+            Create cohort
           </Link>
         </div>
-      </div>
-
-      <div className="p-6">
-        {cohorts.length === 0 ? (
-          <div className="text-center py-12">
-            <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              {isAdmin ? "No Cohorts Found" : "No Cohorts Assigned"}
-            </h3>
-            <p className="text-gray-600 mb-6">
-              {isAdmin
-                ? "Create your first cohort to get started."
-                : "You have not been assigned to any cohorts yet."}
-            </p>
-            <Link
-              href="/admin/cohorts/create"
-              className="inline-flex items-center space-x-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Plus className="w-5 h-5" />
-              <span>Create First Cohort</span>
-            </Link>
-          </div>
-        ) : (
-          <div className="grid gap-6">
-            {cohorts.map((cohort) => (
-              <div
-                key={cohort.id}
-                className="bg-gray-50 rounded-xl p-6 border border-gray-200 hover:shadow-md transition-all duration-300"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-3">
-                      <h3 className="text-xl font-semibold text-gray-900">
-                        {cohort.name}
-                      </h3>
+      ) : table.filteredCount === 0 ? (
+        <p className="p-6 text-gray-500 text-sm">No cohorts match your search.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase">
+              <tr>
+                <th className="px-4 py-2">Name</th>
+                <th className="px-4 py-2 hidden md:table-cell">Organisation</th>
+                <th className="px-4 py-2">Status</th>
+                <th className="px-4 py-2 hidden lg:table-cell">Window</th>
+                <th className="px-4 py-2">Enrolled</th>
+                <th className="px-4 py-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {table.pageRows.map((cohort) => {
+                const status = getStatus(cohort);
+                return (
+                  <tr
+                    key={cohort.id}
+                    className="hover:bg-gray-50 cursor-pointer"
+                    onClick={onTableRowClick(() =>
+                      router.push(`/admin/cohorts/${cohort.id}`)
+                    )}
+                  >
+                    <td className="px-4 py-2.5">
+                      <p className="font-medium text-gray-900">{cohort.name}</p>
+                      {cohort.description ? (
+                        <p className="text-xs text-gray-500 line-clamp-1 max-w-xs">
+                          {htmlToPlainText(cohort.description)}
+                        </p>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-600 hidden md:table-cell">
+                      {cohort.organisation || "—"}
+                    </td>
+                    <td className="px-4 py-2.5">
                       <span
-                        className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(
-                          cohort
-                        )}`}
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${status.className}`}
                       >
-                        {getStatusText(cohort)}
+                        {status.text}
                       </span>
-                    </div>
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-600 hidden lg:table-cell whitespace-nowrap">
+                      {new Date(cohort.openTime).toLocaleDateString()} –{" "}
+                      {new Date(cohort.closeTime).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-700">
+                      {cohort.enrollmentCount || 0}
+                    </td>
+                    <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                      <Link
+                        href={`/admin/cohorts/${cohort.id}/edit`}
+                        className="inline-flex p-1.5 text-gray-500 hover:text-green-600"
+                        title="Edit"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDeleteConfirm({
+                            cohortId: cohort.id,
+                            cohortName: cohort.name,
+                          })
+                        }
+                        className="inline-flex p-1.5 text-gray-500 hover:text-red-600"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-                    {cohort.description && (
-                      <div
-                        className="text-gray-600 mb-4 prose prose-sm max-w-none"
-                        dangerouslySetInnerHTML={{
-                          __html: sanitizeHtml(cohort.description),
-                        }}
-                      />
-                    )}
-
-                    {cohort.organisation && (
-                      <p className="text-sm text-gray-500 mb-2">
-                        {cohort.organisation}
-                      </p>
-                    )}
-                    {(cohort.examinerNames?.length > 0) && (
-                      <p className="text-sm text-gray-600 mb-2">
-                        Examiners:{" "}
-                        <span className="font-medium">
-                          {cohort.examinerNames.join(", ")}
-                        </span>
-                      </p>
-                    )}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                      <div className="flex items-center space-x-2 text-sm text-gray-600">
-                        <Calendar className="w-4 h-4" />
-                        <span>
-                          Opens:{" "}
-                          {new Date(cohort.openTime).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-2 text-sm text-gray-600">
-                        <Clock className="w-4 h-4" />
-                        <span>
-                          Closes:{" "}
-                          {new Date(cohort.closeTime).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-2 text-sm text-gray-600">
-                        <Users className="w-4 h-4" />
-                        <span>{cohort.enrollmentCount || 0} enrolled</span>
-                      </div>
-                    </div>
-
-                    {cohort.instructions && (
-                      <div className="bg-blue-50 rounded-lg p-4 mb-4">
-                        <h4 className="text-sm font-semibold text-blue-900 mb-2">
-                          Instructions
-                        </h4>
-                        <div
-                          className="text-sm text-blue-800 prose prose-sm max-w-none"
-                          dangerouslySetInnerHTML={{
-                            __html: sanitizeHtml(cohort.instructions),
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center space-x-2 ml-4">
-                    <Link
-                      href={`/admin/cohorts/${cohort.id}`}
-                      className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      title="View Details"
-                    >
-                      <Eye className="w-5 h-5" />
-                    </Link>
-                    <Link
-                      href={`/admin/cohorts/${cohort.id}/edit`}
-                      className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                      title="Edit Cohort"
-                    >
-                      <Edit className="w-5 h-5" />
-                    </Link>
-                    <button
-                      onClick={() => handleDeleteClick(cohort.id, cohort.name)}
-                      className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Delete Cohort"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      <TablePager
+        page={table.page}
+        setPage={table.setPage}
+        totalPages={table.totalPages}
+        filteredCount={table.filteredCount}
+        pageSize={table.pageSize}
+      />
 
       <DeleteCohortModal
         isOpen={!!deleteConfirm}

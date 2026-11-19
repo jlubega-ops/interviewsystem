@@ -23,6 +23,8 @@ import {
 } from "lucide-react";
 import { useMessages, SuccessMessages, ErrorMessages } from "./MessageSystem";
 import ConfirmationDialog from "./ConfirmationDialog";
+import { useClientTable } from "../hooks/useClientTable";
+import { TableSearch, TablePager } from "./ClientTableChrome";
 
 export default function EnrolledCandidates({ cohortId, onEnrollmentSuccess }) {
   const [candidates, setCandidates] = useState([]);
@@ -34,6 +36,17 @@ export default function EnrolledCandidates({ cohortId, onEnrollmentSuccess }) {
   const [newAccessKey, setNewAccessKey] = useState("");
   const { showSuccess, showError } = useMessages();
   const fetchingRef = useRef(false);
+  const table = useClientTable(candidates, {
+    pageSize: 10,
+    searchText: (row) =>
+      [
+        row.candidate?.fullName,
+        row.candidate?.email,
+        row.candidate?.phone,
+        row.accessKey,
+        row.status,
+      ].join(" "),
+  });
 
   const fetchCandidates = useCallback(async () => {
     if (fetchingRef.current) return;
@@ -321,210 +334,207 @@ export default function EnrolledCandidates({ cohortId, onEnrollmentSuccess }) {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900">
-            Enrolled Candidates ({candidates.length})
-          </h3>
-          <p className="text-sm text-gray-600">
-            Manage candidates enrolled in this cohort
-          </p>
-        </div>
-        <div className="flex items-center space-x-3">
+    <div className="space-y-3">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+        <TableSearch
+          query={table.query}
+          setQuery={table.setQuery}
+          placeholder="Search candidates..."
+          filteredCount={table.filteredCount}
+          totalCount={table.totalCount}
+        />
+        <div className="flex items-center gap-2">
           <button
             onClick={handleDownloadCandidates}
-            className="flex items-center space-x-2 px-3 py-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
+            className="flex items-center gap-1 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg"
           >
             <Download className="w-4 h-4" />
-            <span>Export Excel</span>
+            Export
           </button>
           <button
             onClick={fetchCandidates}
-            className="flex items-center space-x-2 px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+            className="flex items-center gap-1 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
           >
             <RefreshCw className="w-4 h-4" />
-            <span>Refresh</span>
+            Refresh
           </button>
         </div>
       </div>
 
-      {/* Candidates List */}
-      <div className="space-y-4">
-        {candidates.map((candidate) => (
-          <div
-            key={candidate.id}
-            className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center space-x-3 mb-2">
-                  <h4 className="text-lg font-semibold text-gray-900">
-                    {candidate.candidate.fullName}
-                  </h4>
-                  {getStatusBadge(candidate.status)}
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
-                  <div className="flex items-center space-x-2">
-                    <Mail className="w-4 h-4" />
-                    <span>{candidate.candidate.email}</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Phone className="w-4 h-4" />
-                    <span>{candidate.candidate.phone || "Not provided"}</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Key className="w-4 h-4" />
-                    <div className="flex items-center space-x-2">
-                      {editingKey === candidate.id ? (
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="text"
-                            value={newAccessKey}
-                            onChange={(e) => setNewAccessKey(e.target.value)}
-                            className="font-mono text-xs border border-gray-300 px-2 py-1 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-500"
-                            placeholder="Enter new access key"
-                            autoFocus
-                          />
-                          <button
-                            onClick={() => saveAccessKey(candidate.id)}
-                            disabled={actionLoading === candidate.id}
-                            className="p-1 text-green-600 hover:text-green-700 transition-colors disabled:opacity-50"
-                            title="Save access key"
-                          >
-                            {actionLoading === candidate.id ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Save className="w-4 h-4" />
-                            )}
-                          </button>
-                          <button
-                            onClick={cancelEditingKey}
-                            className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-                            title="Cancel editing"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase">
+              <tr>
+                <th className="px-4 py-2">Candidate</th>
+                <th className="px-4 py-2 hidden md:table-cell">Phone</th>
+                <th className="px-4 py-2">Access key</th>
+                <th className="px-4 py-2">Status</th>
+                <th className="px-4 py-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {table.pageRows.map((candidate) => (
+                <tr key={candidate.id} className="hover:bg-gray-50 align-top">
+                  <td className="px-4 py-2">
+                    <p className="font-medium text-gray-900">
+                      {candidate.candidate.fullName}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {candidate.candidate.email}
+                    </p>
+                  </td>
+                  <td className="px-4 py-2 text-gray-600 hidden md:table-cell">
+                    {candidate.candidate.phone || "—"}
+                  </td>
+                  <td className="px-4 py-2">
+                    {editingKey === candidate.id ? (
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="text"
+                          value={newAccessKey}
+                          onChange={(e) => setNewAccessKey(e.target.value)}
+                          className="font-mono text-xs border border-gray-300 px-2 py-1 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-500"
+                          placeholder="Enter new access key"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => saveAccessKey(candidate.id)}
+                          disabled={actionLoading === candidate.id}
+                          className="p-1 text-green-600 hover:text-green-700 transition-colors disabled:opacity-50"
+                          title="Save access key"
+                        >
+                          {actionLoading === candidate.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Save className="w-4 h-4" />
+                          )}
+                        </button>
+                        <button
+                          onClick={cancelEditingKey}
+                          className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                          title="Cancel editing"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-2">
+                        <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">
+                          {candidate.accessKey}
+                        </span>
+                        <button
+                          onClick={() => copyAccessKey(candidate.accessKey)}
+                          className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                          title="Copy access key"
+                        >
+                          {copiedKey === candidate.accessKey ? (
+                            <Check className="w-4 h-4 text-green-600" />
+                          ) : (
+                            <Copy className="w-4 h-4" />
+                          )}
+                        </button>
+                        <button
+                          onClick={() =>
+                            startEditingKey(candidate.id, candidate.accessKey)
+                          }
+                          className="p-1 text-blue-400 hover:text-blue-600 transition-colors"
+                          title="Edit access key"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-2">{getStatusBadge(candidate.status)}</td>
+                  <td className="px-4 py-2 text-right whitespace-nowrap">
+                    {candidate.status === "ENROLLED" ? (
+                      <button
+                        onClick={() =>
+                          handleAction(
+                            candidate.id,
+                            "suspend",
+                            candidate.candidate.fullName
+                          )
+                        }
+                        disabled={actionLoading === candidate.id}
+                        className="p-2 text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50 rounded-lg transition-colors disabled:opacity-50"
+                        title="Suspend candidate"
+                      >
+                        {actionLoading === candidate.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <UserX className="w-4 h-4" />
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() =>
+                          handleAction(
+                            candidate.id,
+                            "activate",
+                            candidate.candidate.fullName
+                          )
+                        }
+                        disabled={actionLoading === candidate.id}
+                        className="p-2 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
+                        title="Activate candidate"
+                      >
+                        {actionLoading === candidate.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <UserCheck className="w-4 h-4" />
+                        )}
+                      </button>
+                    )}
+                    <button
+                      onClick={() =>
+                        handleAction(
+                          candidate.id,
+                          "reset_access",
+                          candidate.candidate.fullName
+                        )
+                      }
+                      disabled={actionLoading === candidate.id}
+                      className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                      title="Reset access key"
+                    >
+                      {actionLoading === candidate.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
-                        <div className="flex items-center space-x-2">
-                          <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">
-                            {candidate.accessKey}
-                          </span>
-                          <button
-                            onClick={() => copyAccessKey(candidate.accessKey)}
-                            className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-                            title="Copy access key"
-                          >
-                            {copiedKey === candidate.accessKey ? (
-                              <Check className="w-4 h-4 text-green-600" />
-                            ) : (
-                              <Copy className="w-4 h-4" />
-                            )}
-                          </button>
-                          <button
-                            onClick={() =>
-                              startEditingKey(candidate.id, candidate.accessKey)
-                            }
-                            className="p-1 text-blue-400 hover:text-blue-600 transition-colors"
-                            title="Edit access key"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                        </div>
+                        <RefreshCw className="w-4 h-4" />
                       )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-2 text-xs text-gray-500">
-                  Enrolled: {new Date(candidate.enrolledAt).toLocaleString()}
-                </div>
-              </div>
-
-              <div className="flex items-center space-x-2 ml-4">
-                {candidate.status === "ENROLLED" ? (
-                  <button
-                    onClick={() =>
-                      handleAction(
-                        candidate.id,
-                        "suspend",
-                        candidate.candidate.fullName
-                      )
-                    }
-                    disabled={actionLoading === candidate.id}
-                    className="p-2 text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50 rounded-lg transition-colors disabled:opacity-50"
-                    title="Suspend candidate"
-                  >
-                    {actionLoading === candidate.id ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <UserX className="w-4 h-4" />
-                    )}
-                  </button>
-                ) : (
-                  <button
-                    onClick={() =>
-                      handleAction(
-                        candidate.id,
-                        "activate",
-                        candidate.candidate.fullName
-                      )
-                    }
-                    disabled={actionLoading === candidate.id}
-                    className="p-2 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
-                    title="Activate candidate"
-                  >
-                    {actionLoading === candidate.id ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <UserCheck className="w-4 h-4" />
-                    )}
-                  </button>
-                )}
-
-                <button
-                  onClick={() =>
-                    handleAction(
-                      candidate.id,
-                      "reset_access",
-                      candidate.candidate.fullName
-                    )
-                  }
-                  disabled={actionLoading === candidate.id}
-                  className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
-                  title="Reset access key"
-                >
-                  {actionLoading === candidate.id ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-4 h-4" />
-                  )}
-                </button>
-
-                <button
-                  onClick={() =>
-                    handleUnenrollClick(
-                      candidate.id,
-                      candidate.candidate.fullName
-                    )
-                  }
-                  disabled={actionLoading === candidate.id}
-                  className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                  title="Unenroll candidate"
-                >
-                  {actionLoading === candidate.id ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
+                    </button>
+                    <button
+                      onClick={() =>
+                        handleUnenrollClick(
+                          candidate.id,
+                          candidate.candidate.fullName
+                        )
+                      }
+                      disabled={actionLoading === candidate.id}
+                      className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                      title="Unenroll candidate"
+                    >
+                      {actionLoading === candidate.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <TablePager
+          page={table.page}
+          setPage={table.setPage}
+          totalPages={table.totalPages}
+          filteredCount={table.filteredCount}
+          pageSize={table.pageSize}
+        />
       </div>
 
       <ConfirmationDialog

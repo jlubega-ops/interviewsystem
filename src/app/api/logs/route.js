@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../lib/apiAuth";
 import { prisma } from "../../../lib/prisma";
 
 export const runtime = "nodejs";
@@ -8,13 +9,8 @@ const ADMIN_ROLES = ["SUPERADMIN", "ADMIN"];
 // GET /api/logs - List activity logs (Admin only). Supports filters and search.
 export async function GET(request) {
   try {
-    const userRole = request.headers.get("x-user-role");
-    if (!ADMIN_ROLES.includes(userRole)) {
-      return NextResponse.json(
-        { error: "Forbidden. Admin access required to view logs." },
-        { status: 403 }
-      );
-    }
+    const auth = await requireApiUser(request, { roles: ADMIN_ROLES });
+    if (auth.response) return auth.response;
 
     const { searchParams } = new URL(request.url);
     const from = searchParams.get("from"); // ISO date

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../../../lib/apiAuth";
 import { prisma } from "../../../../../lib/prisma";
 import { sendPasswordResetEmail } from "../../../../../lib/emailService";
 import crypto from "crypto";
@@ -9,14 +10,9 @@ export const runtime = "nodejs";
 // POST /api/users/[id]/reset-password - Admin reset user password
 export async function POST(request, { params }) {
   try {
-    const userRole = request.headers.get("x-user-role");
     const ADMIN_ROLES = ["SUPERADMIN", "ADMIN"];
-    if (!userRole || !ADMIN_ROLES.includes(userRole)) {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      );
-    }
+    const auth = await requireApiUser(request, { roles: ADMIN_ROLES });
+    if (auth.response) return auth.response;
 
     const { id } = params;
 

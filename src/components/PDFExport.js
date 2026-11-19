@@ -220,7 +220,7 @@ const generateHTMLContent = (data) => {
                   </div>
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                     <div><strong>Student Answer:</strong> ${
-                      q.candidateAnswer || "No answer"
+                      q.unanswered ? "Not answered" : q.candidateAnswer || "No answer"
                     }</div>
                     ${
                       interview?.type === "TYPING"
@@ -239,16 +239,32 @@ const generateHTMLContent = (data) => {
                     <div><strong>Correct Answer:</strong> ${
                       q.correctAnswer
                     }</div>
+                    <div><strong>Status:</strong>
+                      <span style="color: ${
+                        q.unanswered ? "#4b5563" : q.isCorrect ? "#059669" : "#dc2626"
+                      };">
+                        ${q.unanswered ? "Not answered" : q.isCorrect ? "Correct" : "Incorrect"}
+                      </span>
+                    </div>
                     <div><strong>Points:</strong> ${q.pointsEarned} / ${
                             q.points
                           }</div>
-                    <div><strong>Status:</strong> 
-                      <span style="color: ${
-                        q.isCorrect ? "#059669" : "#dc2626"
-                      };">
-                        ${q.isCorrect ? "Correct" : "Incorrect"}
-                      </span>
-                    </div>
+                    ${
+                      Array.isArray(q.options) && q.options.length
+                        ? `<div style="grid-column: 1 / -1;"><strong>Options:</strong> ${q.options
+                            .map((opt) => {
+                              const letter = String(opt?.letter || "").trim().toUpperCase();
+                              const text = String(opt?.text || "").replace(/<[^>]*>/g, "");
+                              const mark =
+                                letter &&
+                                String(q.correctAnswer || "").toUpperCase().startsWith(letter)
+                                  ? " (correct)"
+                                  : "";
+                              return `${letter}) ${text}${mark}`;
+                            })
+                            .join("; ")}</div>`
+                        : ""
+                    }
                     `
                     }
                   </div>

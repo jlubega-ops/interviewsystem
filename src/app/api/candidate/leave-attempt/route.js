@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../../lib/activityLog.js";
+import { requireOwnedAttempt } from "../../../../lib/candidateAuth.js";
 
 export const runtime = "nodejs";
 
 // POST /api/candidate/leave-attempt - Handle page leave attempt
 export async function POST(request) {
   try {
-    const { attemptId } = await request.json();
+    const { attemptId, accessKey, candidateId } = await request.json();
 
     if (!attemptId) {
       return NextResponse.json(
@@ -15,6 +16,14 @@ export async function POST(request) {
         { status: 400 }
       );
     }
+
+    const owned = await requireOwnedAttempt({
+      attemptId,
+      accessKey,
+      candidateId,
+      requireInProgress: true,
+    });
+    if (owned.error) return owned.error;
 
     // Get current attempt
     const attempt = await prisma.candidateSession.findUnique({

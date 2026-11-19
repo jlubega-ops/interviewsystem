@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Upload, Download, AlertCircle, CheckCircle, X, Loader2 } from "lucide-react";
 import { useMessages } from "./MessageSystem";
-import { sanitizeHtml } from "../lib/sanitize";
+import { htmlToPlainText } from "../lib/sanitize";
 import { parseQuestions } from "../lib/questionParser";
 import RichTextEditor from "./RichTextEditor";
 
@@ -151,7 +151,7 @@ export default function BulkQuestionUploadForBank({ questionBankId, onUploadComp
                 {parsed.slice(0, 5).map((q, i) => (
                   <div key={i} className="text-sm text-green-800">
                     <span className="font-medium">Q{i + 1}: </span>
-                    <span dangerouslySetInnerHTML={{ __html: sanitizeHtml((q.questionText || "").slice(0, 80)) }} />…
+                    <span>{htmlToPlainText(q.questionText || "").slice(0, 80)}</span>…
                     <span className="text-green-600"> Answer: {q.correctAnswer} · Points: {q.points ?? 1}</span>
                   </div>
                 ))}

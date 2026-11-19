@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { canAccessQuestionBank } from "@/lib/questionBankAccess";
+import { requireApiUser } from "@/lib/apiAuth";
+import { invalidateInterview } from "@/lib/cachedReads";
 
 export const runtime = "nodejs";
 
@@ -8,11 +10,10 @@ export const runtime = "nodejs";
 export async function POST(request, { params }) {
   try {
     const { id: interviewId } = await params;
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-    if (!userId || !userRole) {
-      return NextResponse.json({ success: false, error: "Authentication required" }, { status: 401 });
-    }
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
     const interview = await prisma.interview.findUnique({ where: { id: interviewId } });
     if (!interview) {
       return NextResponse.json({ success: false, error: "Interview not found" }, { status: 404 });
@@ -75,6 +76,10 @@ export async function POST(request, { params }) {
       where: { id: interviewId },
       data: { totalQuestions: { increment: toCreate.length } },
     });
+    if (toCreate.length > 0) {
+      invalidateInterview(interviewId);
+    }
+
     return NextResponse.json({
       success: true,
       loaded: toCreate.length,

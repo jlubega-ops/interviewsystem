@@ -1,6 +1,5 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import SetupDetector from "../components/SetupDetector";
 import { MessageDisplay } from "../components/MessageSystem";
 
 const geistSans = Geist({
@@ -25,10 +24,8 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning className="h-full">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased text-gray-900 min-h-screen flex flex-col`}>
-        <SetupDetector>
-          {children}
-          <MessageDisplay />
-        </SetupDetector>
+        {children}
+        <MessageDisplay />
       </body>
     </html>
   );

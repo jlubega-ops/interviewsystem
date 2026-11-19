@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "../../../../../lib/prisma";
 import { verifySession } from "../../../../../lib/auth";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../../../lib/activityLog.js";
+import { invalidateCohort } from "../../../../../lib/cachedReads";
+import { sanitizeHtml } from "../../../../../lib/sanitize";
 
 // Use Node.js runtime instead of Edge Runtime
 export const runtime = "nodejs";
@@ -115,7 +117,7 @@ export async function POST(request, { params }) {
     const interview = await prisma.interview.create({
       data: {
         type,
-        instructions,
+        instructions: instructions ? sanitizeHtml(instructions) : instructions,
         durationMinutes: parseInt(durationMinutes),
         createdBy: session.user.id,
         isActive: true,
@@ -143,6 +145,8 @@ export async function POST(request, { params }) {
       description: `Created ${type} interview in cohort "${cohort.name}"`,
       ...getRequestMeta(request),
     });
+
+    invalidateCohort(cohortId);
 
     return NextResponse.json({
       success: true,

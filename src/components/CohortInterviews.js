@@ -16,11 +16,12 @@ import {
   Plus,
   User,
   Calendar,
-  ExternalLink,
   Edit3,
 } from "lucide-react";
 import { useMessages, SuccessMessages, ErrorMessages } from "./MessageSystem";
-import { sanitizeHtml } from "../lib/sanitize";
+import { htmlToPlainText } from "../lib/sanitize";
+import { useClientTable } from "../hooks/useClientTable";
+import { TableSearch, TablePager, onTableRowClick } from "./ClientTableChrome";
 import InterviewDialog from "./InterviewDialog";
 import EditInterviewDialog from "./EditInterviewDialog";
 import DeleteInterviewModal from "./DeleteInterviewModal";
@@ -36,6 +37,17 @@ export default function CohortInterviews({ cohortId }) {
   const router = useRouter();
   const { showSuccess, showError } = useMessages();
   const fetchingRef = useRef(false);
+  const table = useClientTable(interviews, {
+    pageSize: 10,
+    searchText: (interview) =>
+      [
+        interview.type,
+        interview.interviewType,
+        interview.creator?.fullName,
+        htmlToPlainText(interview.instructions || ""),
+        interview.isHidden ? "hidden" : "visible",
+      ].join(" "),
+  });
 
   const fetchInterviews = useCallback(async () => {
     if (fetchingRef.current) return;
@@ -197,21 +209,21 @@ export default function CohortInterviews({ cohortId }) {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900">Interviews</h3>
-          <p className="text-sm text-gray-600">
-            Manage interviews for this cohort
-          </p>
-        </div>
+    <div className="space-y-3">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+        <TableSearch
+          query={table.query}
+          setQuery={table.setQuery}
+          placeholder="Search interviews..."
+          filteredCount={table.filteredCount}
+          totalCount={table.totalCount}
+        />
         <button
           onClick={() => setShowInterviewDialog(true)}
-          className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
         >
           <Plus className="w-4 h-4" />
-          <span>Add Interview</span>
+          Add interview
         </button>
       </div>
 
@@ -234,68 +246,51 @@ export default function CohortInterviews({ cohortId }) {
           </button>
         </div>
       ) : (
-        <div className="grid gap-4">
-          {interviews.map((interview) => {
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase">
+                <tr>
+                  <th className="px-4 py-2">Interview</th>
+                  <th className="px-4 py-2">Duration</th>
+                  <th className="px-4 py-2 hidden md:table-cell">Created</th>
+                  <th className="px-4 py-2">Status</th>
+                  <th className="px-4 py-2 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+          {table.pageRows.map((interview) => {
             return (
-              <div
+              <tr
                 key={interview.id}
-                className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => router.push(`/admin/interviews/${interview.id}`)}
+                className="hover:bg-gray-50 cursor-pointer"
+                onClick={onTableRowClick(() =>
+                  router.push(`/admin/interviews/${interview.id}`)
+                )}
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-3">
-                      <h4 className="text-lg font-semibold text-gray-900">
-                        {interview.type || interview.interviewType || "Unknown"}{" "}
-                        Assessment
-                      </h4>
+                  <td className="px-4 py-2.5">
+                    <p className="font-medium text-gray-900">
+                      {interview.type || interview.interviewType || "Unknown"} Assessment
+                    </p>
+                    {interview.instructions ? (
+                      <p className="text-xs text-gray-500 line-clamp-1">
+                        {htmlToPlainText(interview.instructions)}
+                      </p>
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-2.5 text-gray-600">
+                    {interview.durationMinutes} min
+                  </td>
+                  <td className="px-4 py-2.5 text-gray-600 hidden md:table-cell">
+                    {new Date(interview.createdAt).toLocaleDateString()}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex flex-wrap gap-1">
                       {getTypeBadge(interview.type || interview.interviewType)}
                       {getStatusBadge(interview)}
                     </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600 mb-4">
-                      <div className="flex items-center space-x-2">
-                        <Clock className="w-4 h-4" />
-                        <span>{interview.durationMinutes} minutes</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <User className="w-4 h-4" />
-                        <span>Created by {interview.creator.fullName}</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Calendar className="w-4 h-4" />
-                        <span>
-                          {new Date(interview.createdAt).toLocaleDateString()}
-                        </span>
-                      </div>
-                    </div>
-
-                    {interview.instructions && (
-                      <div className="mb-4">
-                        <h5 className="text-sm font-medium text-gray-700 mb-2">
-                          Instructions:
-                        </h5>
-                        <div
-                          className="text-sm text-gray-600 prose prose-sm max-w-none"
-                          dangerouslySetInnerHTML={{
-                            __html: sanitizeHtml(interview.instructions),
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center space-x-2 ml-4">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        router.push(`/admin/interviews/${interview.id}`);
-                      }}
-                      className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
-                      title="View interview details"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </button>
+                  </td>
+                  <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -378,11 +373,20 @@ export default function CohortInterviews({ cohortId }) {
                         <Trash2 className="w-4 h-4" />
                       )}
                     </button>
-                  </div>
-                </div>
-              </div>
+                  </td>
+              </tr>
             );
           })}
+              </tbody>
+            </table>
+          </div>
+          <TablePager
+            page={table.page}
+            setPage={table.setPage}
+            totalPages={table.totalPages}
+            filteredCount={table.filteredCount}
+            pageSize={table.pageSize}
+          />
         </div>
       )}
 

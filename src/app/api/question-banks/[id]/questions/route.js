@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { canAccessQuestionBank, canEditQuestionBank } from "@/lib/questionBankAccess";
+import { requireApiUser } from "@/lib/apiAuth";
 
 export const runtime = "nodejs";
 
@@ -27,11 +28,10 @@ async function getBankAndCheckAccess(prisma, id, userId, userRole, needEdit = fa
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-    if (!userId || !userRole) {
-      return NextResponse.json({ success: false, error: "Authentication required" }, { status: 401 });
-    }
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
     const result = await getBankAndCheckAccess(prisma, id, userId, userRole);
     if (result.error) return NextResponse.json({ success: false, error: result.error }, { status: result.status });
     const questions = await prisma.questionBankQuestion.findMany({
@@ -49,11 +49,10 @@ export async function GET(request, { params }) {
 export async function POST(request, { params }) {
   try {
     const { id } = await params;
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-    if (!userId || !userRole) {
-      return NextResponse.json({ success: false, error: "Authentication required" }, { status: 401 });
-    }
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
     const result = await getBankAndCheckAccess(prisma, id, userId, userRole, true);
     if (result.error) return NextResponse.json({ success: false, error: result.error }, { status: result.status });
     const body = await request.json();

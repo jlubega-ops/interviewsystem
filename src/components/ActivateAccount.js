@@ -10,8 +10,8 @@ import {
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
 import AccessFormBrand from "./AccessFormBrand";
+import AuthSplitLayout from "./AuthSplitLayout";
 
 export default function ActivateAccount() {
   const [password, setPassword] = useState("");
@@ -125,20 +125,12 @@ export default function ActivateAccount() {
 
   if (isVerifying) {
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-white to-blue-50 items-center justify-center px-4">
-        <div className="max-w-md w-full text-center">
-          <Image
-            src="/images/logo.png"
-            alt="MUBS EIIC Logo"
-            width={80}
-            height={80}
-            className="rounded-xl mx-auto mb-6 object-contain"
-            priority
-          />
+      <AuthSplitLayout>
+        <div className="text-center py-8">
           <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-gray-600">Verifying activation token...</p>
         </div>
-      </div>
+      </AuthSplitLayout>
     );
   }
 
@@ -146,20 +138,20 @@ export default function ActivateAccount() {
   const showPasswordForm = tokenValid && !success;
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-white to-blue-50 items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <AccessFormBrand
-          title="Activate Account"
-          subtitle={
-            success
-              ? "You will be redirected to the login page shortly."
-              : tokenValid
-                ? `Set your password for ${user.email}`
-                : "This activation link is invalid or has expired."
-          }
-        />
+    <AuthSplitLayout>
+      <AccessFormBrand
+        showLogo={false}
+        title="Activate account"
+        subtitle={
+          success
+            ? "You will be redirected to the login page shortly."
+            : tokenValid
+              ? `Set your password for ${user.email}`
+              : "This activation link is invalid or has expired."
+        }
+      />
 
-        <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200 p-8">
+      <div>
           {error && (
             <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start space-x-2 text-red-800 mb-6">
               <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
@@ -259,7 +251,6 @@ export default function ActivateAccount() {
             </Link>
           </div>
         </div>
-      </div>
-    </div>
+    </AuthSplitLayout>
   );
 }

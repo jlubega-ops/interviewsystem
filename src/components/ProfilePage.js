@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { User, Lock, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
 import NavigationHeader from "./NavigationHeader";
 import ChangePassword from "./ChangePassword";
+import OrganisationSelect from "./OrganisationSelect";
 
 const TABS = [
   { id: "info", label: "Profile info", icon: User },
@@ -172,13 +173,12 @@ export default function ProfilePage() {
                 <label htmlFor="organisation" className="block text-sm font-medium text-gray-700 mb-2">
                   Organisation / Institution
                 </label>
-                <input
-                  id="organisation"
-                  type="text"
+                <OrganisationSelect
                   value={formData.organisation}
-                  onChange={(e) => setFormData((p) => ({ ...p, organisation: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
-                  placeholder="Your organisation"
+                  onChange={(e) =>
+                    setFormData((p) => ({ ...p, organisation: e.target.value }))
+                  }
+                  required
                   disabled={isSaving}
                 />
               </div>

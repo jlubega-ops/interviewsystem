@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../../lib/apiAuth";
 import { prisma } from "../../../../lib/prisma";
 
 export const runtime = "nodejs";
@@ -6,10 +7,10 @@ export const runtime = "nodejs";
 // GET /api/dashboard/stats - Get dashboard statistics
 export async function GET(request) {
   try {
-    const userRole = request.headers.get("x-user-role");
-    if (!["SUPERADMIN", "ADMIN", "EXAMINER", "FACILITATOR"].includes(userRole)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
+    const auth = await requireApiUser(request, {
+      roles: ["SUPERADMIN", "ADMIN", "EXAMINER", "FACILITATOR"],
+    });
+    if (auth.response) return auth.response;
 
     // Get current date for today's calculations
     const today = new Date();
@@ -46,36 +47,29 @@ export async function GET(request) {
       },
     });
 
-    // Get total candidates (unique candidates who have sessions)
-    // Since CandidateSession doesn't have candidateId, we'll count unique access keys
-    const totalCandidates = await prisma.candidateSession.groupBy({
-      by: ["accessKey"],
-      _count: {
-        accessKey: true,
-      },
+    const totalCandidates = await prisma.candidate.count();
+
+    const enrolledCandidates = await prisma.cohortEnrollment.count({
+      where: { status: "ENROLLED" },
     });
 
-    // Get total cohorts
     const totalCohorts = await prisma.cohort.count();
 
-    // Get active cohorts (with enrollments)
+    const now = new Date();
     const activeCohorts = await prisma.cohort.count({
       where: {
-        enrollments: {
-          some: {
-            status: "ENROLLED",
-          },
-        },
+        isActive: true,
+        openTime: { lte: now },
+        closeTime: { gte: now },
       },
     });
 
     // Get total questions across all interviews
     const totalQuestions = await prisma.question.count();
 
-    // Get sessions in progress
     const sessionsInProgress = await prisma.candidateSession.count({
       where: {
-        status: "IN_PROGRESS",
+        status: { in: ["STARTED", "IN_PROGRESS"] },
       },
     });
 
@@ -106,7 +100,9 @@ export async function GET(request) {
       totalInterviews,
       activeInterviews,
       completedToday,
-      totalCandidates: totalCandidates.length,
+      totalCandidates,
+      enrolledCandidates,
+      activeSessions: sessionsInProgress,
       totalCohorts,
       activeCohorts,
       totalQuestions,

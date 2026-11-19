@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
+import { requireEnrollment } from "../../../../lib/candidateAuth";
+import { readCohortResultFlags } from "../../../../lib/resultsPublish";
+import { resolveCorrectLetter, normalizeOptionLetter } from "../../../../lib/questionOptions";
+import { htmlToPlainText } from "../../../../lib/sanitize";
 
 export const runtime = "nodejs";
 
@@ -20,6 +24,9 @@ export async function POST(request) {
       );
     }
 
+    const owned = await requireEnrollment({ candidateId, accessKey });
+    if (owned.error) return owned.error;
+
     const enrollment = await prisma.cohortEnrollment.findFirst({
       where: { accessKey, candidateId, status: "ENROLLED" },
       select: { cohortId: true },
@@ -33,21 +40,8 @@ export async function POST(request) {
     }
 
     const cohortId = enrollment.cohortId;
-
-    // Only allow when cohort results are published
-    let resultsPublished = false;
-    try {
-      const rows = await prisma.$queryRawUnsafe(
-        "SELECT results_published FROM cohorts WHERE id = ? LIMIT 1",
-        cohortId
-      );
-      const row = rows?.[0];
-      if (row) {
-        const val = row.results_published ?? row.Results_Published;
-        resultsPublished = typeof val === "number" ? val !== 0 : Boolean(val);
-      }
-    } catch (_) {}
-    if (!resultsPublished) {
+    const resultFlags = await readCohortResultFlags(prisma, cohortId);
+    if (!resultFlags.resultsPublished) {
       return NextResponse.json(
         { success: false, error: "Results are not published for this cohort" },
         { status: 403 }
@@ -70,7 +64,25 @@ export async function POST(request) {
         status: "COMPLETED",
       },
       include: {
-        interview: { select: { id: true, type: true, durationMinutes: true } },
+        interview: {
+          select: {
+            id: true,
+            type: true,
+            durationMinutes: true,
+            questions: {
+              orderBy: { orderIndex: "asc" },
+              select: {
+                id: true,
+                questionText: true,
+                questionType: true,
+                points: true,
+                orderIndex: true,
+                options: true,
+                correctAnswer: true,
+              },
+            },
+          },
+        },
         candidateAnswers: {
           orderBy: { answeredAt: "asc" },
           include: {
@@ -81,6 +93,7 @@ export async function POST(request) {
                 questionType: true,
                 points: true,
                 orderIndex: true,
+                options: true,
               },
             },
           },
@@ -101,19 +114,62 @@ export async function POST(request) {
       const typingAnswer = session.candidateAnswers.find((ca) => ca.typingStats);
       const attemptTypingStats = typingAnswer?.typingStats ?? null;
 
-      const questions = session.candidateAnswers.map((ca) => ({
-        questionId: ca.question.id,
-        orderIndex: ca.question.orderIndex ?? 0,
-        questionText: ca.question.questionText,
-        questionType: ca.question.questionType,
-        points: ca.question.points ?? 1,
-        yourAnswer: ca.answer ?? "",
-        pointsEarned: isTyping && ca.typingStats
-          ? (session.score ?? 0)
-          : (ca.isCorrect ? (ca.question.points ?? 1) : 0),
-        answeredAt: ca.answeredAt,
-        typingStats: ca.typingStats ?? null,
-      }));
+      const answersByQuestion = new Map(
+        session.candidateAnswers.map((ca) => [ca.questionId, ca])
+      );
+      const interviewQuestions = session.interview?.questions || [];
+      const totalPoints = interviewQuestions.reduce(
+        (sum, question) => sum + (question.points ?? 0),
+        0
+      );
+      const questions = resultFlags.resultsShowAttempt
+        ? (interviewQuestions.length
+            ? interviewQuestions
+            : session.candidateAnswers.map((ca) => ca.question)
+          ).map((question) => {
+            const ca = answersByQuestion.get(question.id);
+            const answered = ca?.answer != null && String(ca.answer).trim() !== "";
+            const questionOptions = Array.isArray(question.options)
+              ? question.options
+              : [];
+            const isChoiceType =
+              question.questionType === "MULTIPLE_CHOICE" ||
+              question.questionType === "TRUE_FALSE";
+            const yourLetter =
+              isChoiceType && answered ? normalizeOptionLetter(ca?.answer) : "";
+            const yourOption = yourLetter
+              ? questionOptions.find(
+                  (opt) => normalizeOptionLetter(opt?.letter) === yourLetter
+                )
+              : null;
+            const yourAnswerText = yourOption
+              ? htmlToPlainText(yourOption?.text || "")
+              : "";
+            const payload = {
+              questionId: question.id,
+              orderIndex: question.orderIndex ?? 0,
+              questionText: question.questionText,
+              questionType: question.questionType,
+              points: question.points ?? 1,
+              options: Array.isArray(question.options) ? question.options : [],
+              yourAnswer: answered ? ca.answer ?? "" : "",
+              yourAnswerText: answered ? yourAnswerText || String(ca.answer ?? "") : "",
+              unanswered: !answered,
+              pointsEarned: !answered
+                ? 0
+                : isTyping && ca.typingStats
+                  ? (session.score ?? 0)
+                  : (ca.isCorrect ? (question.points ?? 1) : 0),
+              answeredAt: ca?.answeredAt ?? null,
+              typingStats: ca?.typingStats ?? null,
+            };
+            if (resultFlags.resultsShowCorrect) {
+              payload.correctAnswer = resolveCorrectLetter(question);
+              payload.isCorrect = answered ? Boolean(ca.isCorrect) : false;
+            }
+            return payload;
+          })
+        : [];
 
       return {
         sessionId: session.id,
@@ -124,7 +180,8 @@ export async function POST(request) {
         completedAt: session.completedAt,
         durationSeconds,
         score: session.score,
-        totalQuestions: session.totalQuestions,
+        totalQuestions: interviewQuestions.length || session.totalQuestions,
+        totalPoints,
         answeredQuestions: session.answeredQuestions,
         submissionReason: session.submissionReason ?? null,
         typingStats: attemptTypingStats,
@@ -132,7 +189,11 @@ export async function POST(request) {
       };
     });
 
-    return NextResponse.json({ success: true, attempts });
+    return NextResponse.json({
+      success: true,
+      attempts,
+      ...resultFlags,
+    });
   } catch (error) {
     console.error("Error fetching attempt results:", error);
     return NextResponse.json(

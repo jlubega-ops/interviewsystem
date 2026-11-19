@@ -13,7 +13,7 @@ import {
   Edit3,
 } from "lucide-react";
 import { useMessages } from "./MessageSystem";
-import { sanitizeHtml } from "../lib/sanitize";
+import { htmlToPlainText } from "../lib/sanitize";
 import { parseQuestions } from "../lib/questionParser";
 import RichTextEditor from "./RichTextEditor";
 
@@ -238,11 +238,7 @@ ANSWER: B`;
                 <div key={index} className="text-sm text-green-800">
                   <div className="font-medium">
                     <span>Q{index + 1}: </span>
-                    <span
-                      dangerouslySetInnerHTML={{
-                        __html: sanitizeHtml(q.questionText || ""),
-                      }}
-                    />
+                    <span>{htmlToPlainText(q.questionText || "")}</span>
                   </div>
                   <div className="ml-4 text-xs text-green-700">
                     Answer: {q.correctAnswer} | Points: {q.points || 1}

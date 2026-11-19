@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../../../../lib/apiAuth";
 import { prisma } from "../../../../../../lib/prisma";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../../../../lib/activityLog.js";
 
@@ -11,11 +12,9 @@ function isAdmin(role) {
 // DELETE /api/cohorts/[id]/examiners/[userId] - Unassign examiner from cohort
 export async function DELETE(request, { params }) {
   try {
-    const userRole = request.headers.get("x-user-role");
-    const actorId = request.headers.get("x-user-id");
-    if (!isAdmin(userRole)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const auth = await requireApiUser(request, { roles: ["SUPERADMIN", "ADMIN"] });
+    if (auth.response) return auth.response;
+    const actorId = auth.user.id;
     const { id: cohortId, userId } = await params;
     const cohort = await prisma.cohort.findUnique({ where: { id: cohortId }, select: { name: true } });
     const unassignedUser = await prisma.user.findUnique({ where: { id: userId }, select: { fullName: true, email: true } });

@@ -14,13 +14,23 @@ if (!process.env.DATABASE_URL) {
 
 const prisma = new PrismaClient();
 
-// Configure via env or defaults
-const email = process.env.ADMIN_EMAIL || "eiicinterviews@mubs.ac.ug";
-const password = process.env.ADMIN_PASSWORD || "123456789";
+const email = process.env.ADMIN_EMAIL;
+const password = process.env.ADMIN_PASSWORD;
 const fullName = process.env.ADMIN_FULL_NAME || "System Admin";
 const firstName = process.env.ADMIN_FIRST_NAME || "System";
 const lastName = process.env.ADMIN_LAST_NAME || "Admin";
 const organisation = process.env.ADMIN_ORGANISATION || "MUBS";
+
+if (!email || !password) {
+  console.error("❌ Error: ADMIN_EMAIL and ADMIN_PASSWORD must be set.");
+  console.error("   Example: ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD=your-secure-password npm run create-admin");
+  process.exit(1);
+}
+
+if (password.length < 8) {
+  console.error("❌ Error: ADMIN_PASSWORD must be at least 8 characters.");
+  process.exit(1);
+}
 
 async function createAdmin() {
   try {

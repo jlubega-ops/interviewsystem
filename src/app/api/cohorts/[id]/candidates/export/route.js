@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../../../../lib/apiAuth";
 import { prisma } from "../../../../../../lib/prisma";
 
 // Use Node.js runtime instead of Edge Runtime
@@ -10,19 +11,14 @@ export async function GET(request, { params }) {
     const { id } = await params;
     const cohortId = id;
 
-    // Get user info from headers (set by middleware)
-    const userId = request.headers.get("x-user-id");
-    const userRole = request.headers.get("x-user-role");
-    const userEmail = request.headers.get("x-user-email");
+    const auth = await requireApiUser(request, {
+      roles: ["ADMIN", "EXAMINER", "SUPERADMIN"],
+    });
+    if (auth.response) return auth.response;
+    const userId = auth.user.id;
+    const userRole = auth.user.role;
+    const userEmail = auth.user.email;
 
-    if (!userId || !userRole) {
-      return NextResponse.json(
-        { success: false, error: "Authentication required" },
-        { status: 401 }
-      );
-    }
-
-    // Check if user has permission to export candidates
     if (!["ADMIN", "EXAMINER", "SUPERADMIN"].includes(userRole)) {
       return NextResponse.json(
         { success: false, error: "Insufficient permissions" },

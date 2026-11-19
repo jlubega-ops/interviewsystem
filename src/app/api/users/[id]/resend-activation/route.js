@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../../../lib/apiAuth";
 import { prisma } from "../../../../../lib/prisma";
 import { sendActivationEmail } from "../../../../../lib/emailService";
 import crypto from "crypto";
@@ -15,16 +16,11 @@ function canManageUsers(role) {
 // POST /api/users/[id]/resend-activation - Resend activation email (Admin or Superadmin). Only for users who have not activated.
 export async function POST(request, { params }) {
   try {
-    const userRole = request.headers.get("x-user-role");
-    const actorId = request.headers.get("x-user-id");
-    const actorEmail = request.headers.get("x-user-email");
-
-    if (!canManageUsers(userRole)) {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      );
-    }
+    const auth = await requireApiUser(request, { roles: ADMIN_ROLES });
+    if (auth.response) return auth.response;
+    const userRole = auth.user.role;
+    const actorId = auth.user.id;
+    const actorEmail = auth.user.email;
 
     const { id } = params;
 

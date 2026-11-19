@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "../../../../../../lib/prisma";
 import { verifySession } from "../../../../../../lib/auth";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../../../../lib/activityLog.js";
+import { invalidateCohort, invalidateInterview } from "../../../../../../lib/cachedReads";
 
 // Use Node.js runtime instead of Edge Runtime
 export const runtime = "nodejs";
@@ -128,6 +129,9 @@ export async function PUT(request, { params }) {
       description: `${action === "hide" ? "Hidden" : "Unhidden"} ${cohortInterview.interview.type} interview in cohort "${cohort?.name ?? cohortId}"`,
       ...getRequestMeta(request),
     });
+
+    invalidateCohort(cohortId);
+    invalidateInterview(interviewId);
 
     return NextResponse.json({
       success: true,
@@ -285,6 +289,9 @@ export async function DELETE(request, { params }) {
       description: `Deleted ${interviewType} interview from cohort "${cohort?.name ?? cohortId}"`,
       ...getRequestMeta(request),
     });
+
+    invalidateCohort(cohortId);
+    invalidateInterview(interviewId);
 
     return NextResponse.json({
       success: true,

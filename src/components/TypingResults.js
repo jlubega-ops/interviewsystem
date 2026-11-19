@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   Download,
-  Eye,
   Trash2,
   Clock,
   Target,
@@ -303,7 +302,12 @@ export default function TypingResults({ interviewId }) {
                 {results.map((result, index) => (
                   <tr
                     key={result.attemptId}
-                    className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}
+                    className={`${index % 2 === 0 ? "bg-white" : "bg-gray-50"} cursor-pointer hover:bg-blue-50`}
+                    onClick={(event) => {
+                      if (event.target.closest("a, button, input, select, textarea, label")) return;
+                      setSelectedAttempt(result);
+                      setShowAttemptModal(true);
+                    }}
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -379,17 +383,6 @@ export default function TypingResults({ interviewId }) {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => {
-                            setSelectedAttempt(result);
-                            setShowAttemptModal(true);
-                          }}
-                          className="text-blue-600 hover:text-blue-900 flex items-center"
-                          title="View details"
-                          aria-label="View details"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </button>
                         <button
                           onClick={() => setAttemptToDelete(result)}
                           className="text-red-600 hover:text-red-800 flex items-center"

@@ -3,6 +3,9 @@ import { prisma } from "../../../../lib/prisma";
 import { logger } from "../../../../lib/logger.js";
 import { createLog, getRequestMeta, ACTION_TYPES } from "../../../../lib/activityLog.js";
 import { calculateTimeRemaining } from "../../../../lib/timeValidation.js";
+import { questionsForCandidate } from "../../../../lib/candidateAuth.js";
+import { getInterviewWithQuestions } from "../../../../lib/cachedReads.js";
+import { applyAttemptShuffle, createAttemptShuffle } from "../../../../lib/attemptShuffle.js";
 
 export const runtime = "nodejs";
 
@@ -33,14 +36,7 @@ export async function POST(request) {
     }
 
     // Check if interview exists and is active
-    const interview = await prisma.interview.findUnique({
-      where: { id: interviewId },
-      include: {
-        questions: {
-          orderBy: { orderIndex: "asc" },
-        },
-      },
-    });
+    const interview = await getInterviewWithQuestions(interviewId);
 
     if (!interview) {
       await createLog({
@@ -211,6 +207,11 @@ export async function POST(request) {
       }
     }
 
+    const shuffleLayout =
+      interview.type === "TYPING"
+        ? null
+        : createAttemptShuffle(interview.questions);
+
     // Create new attempt with IN_PROGRESS status
     const attempt = await prisma.candidateSession.create({
       data: {
@@ -222,14 +223,14 @@ export async function POST(request) {
         startedAt: new Date(),
         totalQuestions: interview.questions.length,
         leaveAttempts: 5, // Initialize with 5 attempts
+        shuffleLayout,
       },
     });
 
-    // Questions and options in original order (no shuffle).
-    const finalQuestions = interview.questions.map((q) => ({
-      ...q,
-      options: q.options ? JSON.parse(JSON.stringify(q.options)) : [],
-    }));
+    const finalQuestions = applyAttemptShuffle(
+      interview.questions,
+      shuffleLayout
+    );
 
     logger.candidate("✅ Attempt started successfully", {
       attemptId: attempt.id,
@@ -258,7 +259,7 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       attemptId: attempt.id,
-      questions: finalQuestions,
+      questions: questionsForCandidate(finalQuestions),
       durationMinutes: interview.durationMinutes,
       startedAt: attempt.startedAt,
       serverTime: timeData.serverNow.getTime(),

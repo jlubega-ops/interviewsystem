@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "../../../../../lib/apiAuth";
 import { prisma } from "../../../../../lib/prisma";
 
 // Use Node.js runtime instead of Edge Runtime
@@ -7,6 +8,8 @@ export const runtime = "nodejs";
 // GET /api/cohorts/[id]/enrollments - Fetch enrolled candidates
 export async function GET(request, { params }) {
   try {
+    const auth = await requireApiUser(request);
+    if (auth.response) return auth.response;
     const { id } = await params;
     const cohortId = id;
 

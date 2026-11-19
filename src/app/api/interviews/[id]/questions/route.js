@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../../lib/prisma";
+import { getInterviewWithQuestions, invalidateInterview } from "../../../../../lib/cachedReads";
 
 export const runtime = "nodejs";
 
@@ -66,11 +67,8 @@ export async function GET(request, { params }) {
       data: { lastActivity: now },
     });
 
-    // Get questions for this interview
-    const questions = await prisma.question.findMany({
-      where: { interviewId: interviewId },
-      orderBy: { orderIndex: "asc" },
-    });
+    const interview = await getInterviewWithQuestions(interviewId);
+    const questions = interview?.questions || [];
 
     return NextResponse.json({
       success: true,
@@ -221,6 +219,8 @@ export async function POST(request, { params }) {
         },
       },
     });
+
+    invalidateInterview(interviewId);
 
     return NextResponse.json({
       success: true,
