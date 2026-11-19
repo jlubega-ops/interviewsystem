@@ -31,6 +31,7 @@ services:
     env_file: .env
     environment:
       NODE_ENV: production
+      TZ: Africa/Kampala
       HOSTNAME: 0.0.0.0
       PORT: "3000"
       DATABASE_URL: mysql://eiic:${MYSQL_PASSWORD}@db:3306/interviewsystem
