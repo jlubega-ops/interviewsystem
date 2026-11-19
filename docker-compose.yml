@@ -26,6 +26,7 @@ services:
       context: .
       args:
         NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL:-https://eiicinterviews.mubs.ac.ug}
+        JWT_SECRET: ${JWT_SECRET}
     restart: unless-stopped
     env_file: .env
     environment:
